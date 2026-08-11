@@ -1,0 +1,48 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Sign In — EncryptorVault</title>
+  <meta name="description" content="Sign in to your EncryptorVault account to manage encryption keys and sync with the CLI application.">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+  <div class="auth-wrapper">
+    <div class="auth-card">
+      <div class="auth-header">
+        <div class="auth-icon">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2 4 5v6c0 5 3.5 9 8 11 4.5-2 8-6 8-11V5l-8-3Z"/></svg>
+        </div>
+        <h2>Sign in to EncryptorVault</h2>
+        <p>Access your encryption key vault and sync credentials</p>
+      </div>
+
+      {{if .Error}}
+      <div class="error-alert">{{.Error}}</div>
+      {{end}}
+
+      <form action="/login" method="POST">
+        <input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
+        <div class="form-group">
+          <label>Username or email</label>
+          <input type="text" name="username_or_email" class="form-control" placeholder="Enter username or email" required autofocus>
+        </div>
+        <div class="form-group">
+          <label>Password</label>
+          <input type="password" name="password" class="form-control" placeholder="Enter your password" required>
+        </div>
+        <button type="submit" class="btn-primary btn-full" style="margin-top: 20px; padding: 11px;">
+          Sign in
+        </button>
+      </form>
+
+      <div class="auth-footer">
+        Don't have an account? <a href="/register">Register here</a>
+      </div>
+    </div>
+  </div>
+</body>
+</html>

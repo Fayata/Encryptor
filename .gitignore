@@ -1,3 +1,17 @@
 /DESIGN.md
 /encryptor.exe
 /encryptor.exe~
+/encryptor-api.exe
+/test/
+test/
+node_modules/
+/node_modules/
+test_folder/
+desktop/
+web/
+
+test_folder/Report_WAF.xlsx
+test_folder/data.json
+test_folder/test1.txt
+test_folder/test2.txt
+test_folder/Web Attack.pptx

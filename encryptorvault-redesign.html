@@ -1,0 +1,565 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>EncryptorVault — Key Vault</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --bg: #FFFFFF;
+    --surface: #FFFFFF;
+    --border: #EBEBEC;
+    --border-strong: #D6D6D8;
+    --text-primary: #17181C;
+    --text-secondary: #7A7B82;
+    --text-muted: #A6A7AD;
+    --ink: #17181C;
+    --accent: #2453E8;
+    --accent-dark: #1A3FBF;
+    --accent-tint: #F2F4FE;
+    --teal: #17181C;
+    --teal-tint: transparent;
+    --amber: #17181C;
+    --amber-tint: transparent;
+    --radius-sm: 6px;
+    --radius-md: 8px;
+    --radius-lg: 10px;
+    --shadow-card: none;
+    --shadow-hover: none;
+  }
+
+  *{ box-sizing: border-box; }
+
+  html,body{
+    margin:0; padding:0;
+    background: var(--bg);
+    color: var(--text-primary);
+    font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  .mono{ font-family: 'JetBrains Mono', ui-monospace, monospace; }
+
+  a{ text-decoration:none; }
+
+  /* ---------- NAV ---------- */
+  .topbar{
+    background: var(--surface);
+    border-bottom: 1px solid var(--border);
+    position: sticky; top:0; z-index: 20;
+  }
+  .topbar-inner{
+    max-width: 1180px;
+    margin: 0 auto;
+    padding: 14px 24px;
+    display:flex;
+    align-items:center;
+    justify-content: space-between;
+    gap: 16px;
+  }
+  .brand{ display:flex; align-items:center; gap:10px; min-width:0; }
+  .brand-mark{
+    width:26px; height:26px; border-radius: 6px;
+    background: var(--ink);
+    display:flex; align-items:center; justify-content:center;
+    flex-shrink:0;
+  }
+  .brand-mark svg{ width:14px; height:14px; }
+  .brand-name{ font-weight:600; font-size:14.5px; letter-spacing:-0.01em; white-space:nowrap; }
+
+  .nav-links{ display:flex; align-items:center; gap:2px; }
+  .nav-link{
+    display:flex; align-items:center; gap:6px;
+    font-size: 13px; font-weight: 500;
+    color: var(--text-secondary);
+    padding: 7px 10px; border-radius: 6px;
+  }
+  .nav-link svg{ width:14px; height:14px; }
+  .nav-link.active{ color: var(--text-primary); font-weight:600; }
+  .nav-link:not(.active):hover{ color: var(--text-primary); }
+
+  .nav-right{ display:flex; align-items:center; gap:16px; }
+  .user-chip{
+    display:flex; align-items:center; gap:8px;
+    font-size: 13px; color: var(--text-secondary);
+  }
+  .user-chip b{ color: var(--text-primary); font-weight:600; }
+  .avatar{
+    width:22px; height:22px; border-radius:50%;
+    background: var(--border);
+    color: var(--text-primary); font-size:10.5px; font-weight:600;
+    display:flex; align-items:center; justify-content:center;
+  }
+  .btn-logout{
+    font-size:13px; font-weight:500; color: var(--text-secondary);
+    border:none; background:transparent;
+    padding:6px 4px;
+  }
+  .btn-logout:hover{ color: var(--text-primary); }
+
+  /* ---------- LAYOUT ---------- */
+  .page{ max-width: 1180px; margin: 0 auto; padding: 28px 24px 64px; }
+
+  /* ---------- HERO ---------- */
+  .hero{
+    border: 1px solid var(--border);
+    border-radius: var(--radius-lg);
+    padding: 22px 24px;
+    display:flex; align-items:center; justify-content: space-between;
+    gap: 24px;
+    margin-bottom: 40px;
+  }
+  .hero-left{ max-width: 620px; }
+  .hero-eyebrow{
+    display:flex; align-items:center; gap:6px;
+    font-size:11.5px; font-weight:600; color: var(--text-muted);
+    letter-spacing: 0.06em; text-transform: uppercase;
+    margin-bottom: 8px;
+  }
+  .hero-eyebrow svg{ width:12px; height:12px; }
+  .hero h1{
+    font-size: 17px; font-weight:600; color: var(--text-primary); margin:0 0 6px; letter-spacing:-0.01em;
+  }
+  .hero p{
+    font-size: 13px; color: var(--text-secondary); margin:0; line-height:1.55;
+  }
+  .hero p .mono{ color: var(--text-primary); }
+  .hero-actions{ flex-shrink:0; }
+  .btn-primary{
+    display:inline-flex; align-items:center; gap:7px;
+    background: var(--text-primary);
+    color:#fff; font-size:13px; font-weight:500;
+    padding: 9px 16px; border-radius: var(--radius-sm);
+    border:none; cursor:pointer;
+    white-space:nowrap;
+  }
+  .btn-primary:hover{ background: var(--accent); }
+  .btn-primary svg{ width:14px; height:14px; }
+  .btn-secondary{
+    display:inline-flex; align-items:center; gap:7px;
+    background: transparent;
+    color: var(--text-primary); font-size:13px; font-weight:500;
+    padding: 9px 16px; border-radius: var(--radius-sm);
+    border:1px solid var(--border-strong); cursor:pointer;
+    white-space:nowrap;
+  }
+  .btn-secondary:hover{ border-color: var(--text-primary); }
+  .btn-secondary svg{ width:14px; height:14px; }
+
+  /* ---------- SECTION HEADER ---------- */
+  .section-head{
+    display:flex; align-items:flex-end; justify-content: space-between;
+    gap: 16px; margin-bottom: 22px; flex-wrap: wrap;
+  }
+  .section-head h2{ font-size: 17px; font-weight:600; margin:0 0 4px; letter-spacing:-0.01em; }
+  .section-head p{ font-size: 13px; color: var(--text-secondary); margin:0; }
+
+  /* ---------- STATS ---------- */
+  .stats{
+    display:grid; grid-template-columns: repeat(3, 1fr);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-md);
+    margin-bottom: 40px;
+    overflow: hidden;
+  }
+  .stat-card{
+    background: var(--surface);
+    padding: 20px 22px;
+    display:flex; align-items:center; gap: 12px;
+    border-right: 1px solid var(--border);
+  }
+  .stat-card:last-child{ border-right:none; }
+  .stat-icon{
+    width:32px; height:32px;
+    display:flex; align-items:center; justify-content:center;
+    flex-shrink:0; color: var(--text-muted);
+  }
+  .stat-icon svg{ width:17px; height:17px; }
+  .stat-icon.indigo, .stat-icon.teal, .stat-icon.amber{ background: transparent; }
+  .stat-value{ font-size: 21px; font-weight: 600; letter-spacing:-0.02em; line-height:1.1; color: var(--text-primary); }
+  .stat-label{ font-size: 12.5px; color: var(--text-secondary); margin-top:2px; font-weight:400; }
+  .stat-value.status{ font-size:14px; font-weight:500; display:flex; align-items:center; gap:7px; }
+  .dot-live{
+    width:6px; height:6px; border-radius:50%; background: var(--text-primary);
+  }
+
+  /* ---------- TABLE CARD ---------- */
+  .table-card{
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-md);
+    overflow: hidden;
+  }
+  .table-toolbar{
+    display:flex; align-items:center; justify-content: space-between;
+    gap: 16px; padding: 14px 18px;
+    border-bottom: 1px solid var(--border);
+  }
+  .search-box{
+    display:flex; align-items:center; gap:9px;
+    background: transparent;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 8px 12px;
+    flex:1; max-width: 340px;
+  }
+  .search-box svg{ width:15px; height:15px; color: var(--text-muted); flex-shrink:0; }
+  .search-box input{
+    border:none; background:transparent; outline:none;
+    font-size: 13.5px; color: var(--text-primary); width:100%;
+    font-family: inherit;
+  }
+  .search-box input::placeholder{ color: var(--text-muted); }
+  .result-count{ font-size:12.5px; color: var(--text-secondary); white-space:nowrap; }
+  .result-count b{ color: var(--text-primary); }
+
+  table{ width:100%; border-collapse: collapse; }
+  thead th{
+    text-align:left; font-size: 11px; font-weight:500; letter-spacing: 0.05em;
+    color: var(--text-muted); text-transform: uppercase;
+    padding: 11px 18px; border-bottom: 1px solid var(--border);
+    background: transparent;
+  }
+  tbody td{
+    padding: 14px 18px; font-size: 13.5px; color: var(--text-primary);
+    border-bottom: 1px solid var(--border);
+    vertical-align: middle;
+  }
+  tbody tr:last-child td{ border-bottom:none; }
+  tbody tr:hover{ background: #FAFBFD; }
+
+  .key-name{ display:flex; align-items:center; gap:10px; font-weight:500; }
+  .key-name-icon{
+    width:26px; height:26px; border-radius:6px; background: transparent; border: 1px solid var(--border);
+    color: var(--text-muted); display:flex; align-items:center; justify-content:center; flex-shrink:0;
+  }
+  .key-name-icon svg{ width:13px; height:13px; }
+
+  .algo-pill{
+    display:inline-block; font-size:12.5px; font-weight:500;
+    padding: 0; border-radius: 0;
+    background: transparent; color: var(--text-secondary);
+  }
+  .secret-mask{
+    display:flex; align-items:center; gap:8px; color: var(--text-secondary);
+  }
+  .secret-dots{ letter-spacing: 3px; }
+  .icon-btn-ghost{
+    width:26px; height:26px; border-radius:6px; border:none; background:transparent;
+    display:flex; align-items:center; justify-content:center; color: var(--text-muted); cursor:pointer;
+  }
+  .icon-btn-ghost:hover{ background: var(--bg); color: var(--text-primary); }
+  .icon-btn-ghost svg{ width:14px; height:14px; }
+
+  .file-path{ color: var(--text-secondary); font-size:12.5px; }
+  .modified-time{ color: var(--text-secondary); font-size:12.5px; }
+
+  .row-actions{ display:flex; align-items:center; gap:4px; }
+  .action-danger:hover{ background:#FEF3F2; color:#D92D20; }
+
+  /* Empty state */
+  .empty-state{
+    padding: 56px 24px 64px;
+    text-align:center;
+  }
+  .empty-icon{
+    width:44px; height:44px; border-radius: 50%;
+    background: transparent; color: var(--text-muted); border: 1px solid var(--border);
+    display:flex; align-items:center; justify-content:center;
+    margin: 0 auto 16px;
+  }
+  .empty-icon svg{ width:20px; height:20px; }
+  .empty-state h3{ font-size:14px; font-weight:600; margin: 0 0 6px; }
+  .empty-state p{ font-size:13.5px; color: var(--text-secondary); margin:0; max-width:400px; margin:0 auto; line-height:1.6; }
+  .empty-state b{ color: var(--text-primary); }
+
+  /* mobile card list (hidden on desktop) */
+  .mobile-list{ display:none; }
+  .mkey-card{
+    padding: 14px 16px; border-bottom: 1px solid var(--border);
+  }
+  .mkey-card:last-child{ border-bottom:none; }
+  .mkey-top{ display:flex; align-items:center; justify-content:space-between; margin-bottom:10px; }
+  .mkey-meta{ display:flex; flex-direction:column; gap:6px; font-size:12.5px; color: var(--text-secondary); }
+  .mkey-meta-row{ display:flex; justify-content:space-between; gap:10px; }
+  .mkey-meta-row span:first-child{ color: var(--text-muted); }
+
+  /* ---------- RESPONSIVE ---------- */
+  @media (max-width: 860px){
+    .stats{ grid-template-columns: 1fr; }
+    .stat-card{ border-right:none; border-bottom: 1px solid var(--border); }
+    .stat-card:last-child{ border-bottom:none; }
+    .hero{ flex-direction:column; align-items:flex-start; }
+    .btn-primary{ width:100%; justify-content:center; }
+    .hero-actions{ width:100%; }
+  }
+
+  @media (max-width: 720px){
+    .nav-link span.label{ display:none; }
+    .nav-link{ padding:8px; }
+    .user-chip span{ display:none; }
+    table{ display:none; }
+    .mobile-list{ display:block; }
+    .table-toolbar{ flex-direction:column; align-items:stretch; }
+    .search-box{ max-width:none; }
+    .result-count{ text-align:right; }
+  }
+
+  @media (max-width: 480px){
+    .page{ padding: 20px 16px 48px; }
+    .topbar-inner{ padding: 12px 16px; }
+    .hero{ padding: 22px 20px; }
+    .hero h1{ font-size:18px; }
+    .section-head{ align-items:flex-start; }
+    .section-head .btn-primary{ width:100%; }
+  }
+</style>
+</head>
+<body>
+
+<div class="topbar">
+  <div class="topbar-inner">
+    <div class="brand">
+      <div class="brand-mark">
+        <svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2 4 5v6c0 5 3.5 9 8 11 4.5-2 8-6 8-11V5l-8-3Z"/></svg>
+      </div>
+      <span class="brand-name">EncryptorVault</span>
+    </div>
+
+    <div class="nav-links">
+      <a class="nav-link active" href="#">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="7.5" cy="15.5" r="5.5"/><path d="M21 2l-9.6 9.6"/><path d="M15.5 7.5 21 2"/><path d="m18 9 2-2"/></svg>
+        <span class="label">Key Vault</span>
+      </a>
+      <a class="nav-link" href="#">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12"/><path d="m7 10 5 5 5-5"/><path d="M5 21h14"/></svg>
+        <span class="label">CLI Download</span>
+      </a>
+    </div>
+
+    <div class="nav-right">
+      <div class="user-chip">
+        <div class="avatar">T</div>
+        <span>Logged in as <b>tes</b></span>
+      </div>
+      <button class="btn-logout">Log out</button>
+    </div>
+  </div>
+</div>
+
+<div class="page">
+
+  <!-- HERO -->
+  <div class="hero">
+    <div class="hero-left">
+      <div class="hero-eyebrow">
+        <svg viewBox="0 0 24 24" fill="currentColor"><path d="M13 2 3 14h7l-1 8 10-12h-7l1-8Z"/></svg>
+        CLI TERMINAL APP
+      </div>
+      <h1>Encrypt files locally with the Encryptor CLI</h1>
+      <p>High-performance cryptography — <span class="mono">FayCipher</span>, <span class="mono">AES-GCM</span>, <span class="mono">Argon2id</span> — with automatic key sync to your vault.</p>
+    </div>
+    <div class="hero-actions">
+      <button class="btn-primary">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12"/><path d="m7 10 5 5 5-5"/><path d="M5 21h14"/></svg>
+        Download executable (.exe)
+      </button>
+    </div>
+  </div>
+
+  <!-- SECTION HEAD -->
+  <div class="section-head">
+    <div>
+      <h2>Key Vault &amp; Encryption Keys</h2>
+      <p>Manage, generate, rotate, and back up the encryption keys used by your CLI application.</p>
+    </div>
+    <!-- <button class="btn-primary">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14M5 12h14"/></svg>
+      Generate / add key
+    </button> -->
+  </div>
+
+  <!-- STATS -->
+  <div class="stats">
+    <div class="stat-card">
+      <div class="stat-icon indigo">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="7.5" cy="15.5" r="5.5"/><path d="M21 2l-9.6 9.6"/><path d="m15.5 7.5 5.5-5.5"/><path d="m18 9 2-2"/></svg>
+      </div>
+      <div>
+        <div class="stat-value">3</div>
+        <div class="stat-label">Total vault keys</div>
+      </div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-icon teal">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="10" width="16" height="10" rx="2"/><path d="M8 10V7a4 4 0 0 1 8 0v3"/></svg>
+      </div>
+      <div>
+        <div class="stat-value">2</div>
+        <div class="stat-label">Active cryptographic systems</div>
+      </div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-icon amber">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M13 2 3 14h7l-1 8 10-12h-7l1-8Z"/></svg>
+      </div>
+      <div>
+        <div class="stat-value status"><span class="dot-live"></span>Active</div>
+        <div class="stat-label">CLI auto-sync enabled</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- TABLE -->
+  <div class="table-card">
+    <div class="table-toolbar">
+      <div class="search-box">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/></svg>
+        <input type="text" placeholder="Search keys by name, algorithm, or file path…">
+      </div>
+      <div class="result-count">Showing <b>3</b> key(s)</div>
+    </div>
+
+    <table>
+      <thead>
+        <tr>
+          <th>Key label / name</th>
+          <th>Algorithm</th>
+          <th>Key secret / password</th>
+          <th>Associated target file</th>
+          <th>Last modified</th>
+          <th>Actions</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>
+            <div class="key-name">
+              <div class="key-name-icon">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="7.5" cy="15.5" r="5.5"/><path d="M21 2l-9.6 9.6"/></svg>
+              </div>
+              vault-master-01
+            </div>
+          </td>
+          <td><span class="algo-pill mono">AES-GCM</span></td>
+          <td>
+            <div class="secret-mask">
+              <span class="secret-dots mono">••••••••••</span>
+              <button class="icon-btn-ghost"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-7 11-7 11 7 11 7-4 7-11 7-11-7-11-7Z"/><circle cx="12" cy="12" r="3"/></svg></button>
+            </div>
+          </td>
+          <td><span class="file-path mono">/data/reports_q3.zip</span></td>
+          <td><span class="modified-time">2 hours ago</span></td>
+          <td>
+            <div class="row-actions">
+              <button class="icon-btn-ghost"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg></button>
+              <button class="icon-btn-ghost action-danger"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/></svg></button>
+            </div>
+          </td>
+        </tr>
+        <tr>
+          <td>
+            <div class="key-name">
+              <div class="key-name-icon">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="7.5" cy="15.5" r="5.5"/><path d="M21 2l-9.6 9.6"/></svg>
+              </div>
+              client-backup-key
+            </div>
+          </td>
+          <td><span class="algo-pill mono">Argon2id</span></td>
+          <td>
+            <div class="secret-mask">
+              <span class="secret-dots mono">••••••••••</span>
+              <button class="icon-btn-ghost"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-7 11-7 11 7 11 7-4 7-11 7-11-7-11-7Z"/><circle cx="12" cy="12" r="3"/></svg></button>
+            </div>
+          </td>
+          <td><span class="file-path mono">/data/backup_aug.tar</span></td>
+          <td><span class="modified-time">Yesterday</span></td>
+          <td>
+            <div class="row-actions">
+              <button class="icon-btn-ghost"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg></button>
+              <button class="icon-btn-ghost action-danger"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/></svg></button>
+            </div>
+          </td>
+        </tr>
+        <tr>
+          <td>
+            <div class="key-name">
+              <div class="key-name-icon">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="7.5" cy="15.5" r="5.5"/><path d="M21 2l-9.6 9.6"/></svg>
+              </div>
+              faycipher-node-2
+            </div>
+          </td>
+          <td><span class="algo-pill mono">FayCipher</span></td>
+          <td>
+            <div class="secret-mask">
+              <span class="secret-dots mono">••••••••••</span>
+              <button class="icon-btn-ghost"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-7 11-7 11 7 11 7-4 7-11 7-11-7-11-7Z"/><circle cx="12" cy="12" r="3"/></svg></button>
+            </div>
+          </td>
+          <td><span class="file-path mono">/srv/dvwa/uploads</span></td>
+          <td><span class="modified-time">3 days ago</span></td>
+          <td>
+            <div class="row-actions">
+              <button class="icon-btn-ghost"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg></button>
+              <button class="icon-btn-ghost action-danger"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/></svg></button>
+            </div>
+          </td>
+        </tr>
+      </tbody>
+    </table>
+
+    <!-- mobile stacked cards -->
+    <div class="mobile-list">
+      <div class="mkey-card">
+        <div class="mkey-top">
+          <div class="key-name">
+            <div class="key-name-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="7.5" cy="15.5" r="5.5"/><path d="M21 2l-9.6 9.6"/></svg></div>
+            vault-master-01
+          </div>
+          <span class="algo-pill mono">AES-GCM</span>
+        </div>
+        <div class="mkey-meta">
+          <div class="mkey-meta-row"><span>Secret</span><span class="mono">••••••••••</span></div>
+          <div class="mkey-meta-row"><span>Target file</span><span class="mono">/data/reports_q3.zip</span></div>
+          <div class="mkey-meta-row"><span>Modified</span><span>2 hours ago</span></div>
+        </div>
+      </div>
+      <div class="mkey-card">
+        <div class="mkey-top">
+          <div class="key-name">
+            <div class="key-name-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="7.5" cy="15.5" r="5.5"/><path d="M21 2l-9.6 9.6"/></svg></div>
+            client-backup-key
+          </div>
+          <span class="algo-pill mono">Argon2id</span>
+        </div>
+        <div class="mkey-meta">
+          <div class="mkey-meta-row"><span>Secret</span><span class="mono">••••••••••</span></div>
+          <div class="mkey-meta-row"><span>Target file</span><span class="mono">/data/backup_aug.tar</span></div>
+          <div class="mkey-meta-row"><span>Modified</span><span>Yesterday</span></div>
+        </div>
+      </div>
+      <div class="mkey-card">
+        <div class="mkey-top">
+          <div class="key-name">
+            <div class="key-name-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="7.5" cy="15.5" r="5.5"/><path d="M21 2l-9.6 9.6"/></svg></div>
+            faycipher-node-2
+          </div>
+          <span class="algo-pill mono">FayCipher</span>
+        </div>
+        <div class="mkey-meta">
+          <div class="mkey-meta-row"><span>Secret</span><span class="mono">••••••••••</span></div>
+          <div class="mkey-meta-row"><span>Target file</span><span class="mono">/srv/dvwa/uploads</span></div>
+          <div class="mkey-meta-row"><span>Modified</span><span>3 days ago</span></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+</body>
+</html>

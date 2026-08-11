@@ -1,0 +1,81 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Create Account — EncryptorVault</title>
+  <meta name="description" content="Register a new EncryptorVault account to manage encryption keys and link with the CLI application.">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+  <div class="auth-wrapper">
+    <div class="auth-card">
+      <div class="auth-header">
+        <div class="auth-icon">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M13 2 3 14h7l-1 8 10-12h-7l1-8Z"/></svg>
+        </div>
+        <h2>Create account</h2>
+        <p>Register to manage encryption keys &amp; link with your CLI app</p>
+      </div>
+
+      {{if .Error}}
+      <div class="error-alert">{{.Error}}</div>
+      {{end}}
+
+      <form action="/register" method="POST">
+        <input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
+        <div class="form-group">
+          <label>Username</label>
+          <input type="text" name="username" class="form-control" placeholder="Choose a username" required autofocus>
+        </div>
+        <div class="form-group">
+          <label>Email address</label>
+          <input type="email" name="email" class="form-control" placeholder="user@example.com" required>
+        </div>
+        <div class="form-group">
+          <label>Password</label>
+          <input type="password" name="password" class="form-control" placeholder="Min 8 chars, 1 uppercase, 1 lowercase, 1 number" required minlength="8">
+        </div>
+        <button type="submit" class="btn-primary btn-full" style="margin-top: 20px; padding: 11px;">
+          Register account
+        </button>
+      </form>
+
+      <div class="auth-footer">
+        Already have an account? <a href="/login">Sign in</a>
+      </div>
+    </div>
+  </div>
+
+  <!-- Download Prompt Modal after registration -->
+  {{if .PromptDownload}}
+  <div class="modal-overlay active" id="downloadPromptModal">
+    <div class="modal-card" style="text-align: center; max-width: 420px;">
+      <div style="margin-bottom: 20px;">
+        <div class="download-icon" style="width: 44px; height: 44px; border-radius: 10px; background: var(--ink); display: flex; align-items: center; justify-content: center; margin: 0 auto 16px; color: #fff;">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width: 22px; height: 22px;"><path d="M13 2 3 14h7l-1 8 10-12h-7l1-8Z"/></svg>
+        </div>
+        <h3 style="font-size: 16px; font-weight: 600; margin-bottom: 8px;">Account created successfully!</h3>
+        <p style="color: var(--text-secondary); font-size: 13.5px; line-height: 1.6; max-width: 340px; margin: 0 auto;">
+          If you don't have the <strong>Encryptor Terminal Application</strong> yet, download it now to start encrypting your local files! All encryption keys will automatically be backed up to your web account.
+        </p>
+      </div>
+
+      <div style="display: flex; flex-direction: column; gap: 8px;">
+        <a href="/api/download/cli" class="btn-primary btn-full" style="padding: 11px;">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width: 14px; height: 14px;"><path d="M12 3v12"/><path d="m7 10 5 5 5-5"/><path d="M5 21h14"/></svg>
+          Download Encryptor CLI (.exe)
+        </a>
+        <a href="/" class="btn-secondary btn-full">
+          Go to Key Vault Dashboard →
+        </a>
+      </div>
+    </div>
+  </div>
+  {{end}}
+
+  <script src="/static/app.js"></script>
+</body>
+</html>

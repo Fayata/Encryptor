@@ -1,0 +1,14 @@
+[2026-08-06 10:11:53] [INFO] LOGIN_SUCCESS ip=[::1] user=daffa
+[2026-08-06 10:16:34] [INFO] LOGIN_SUCCESS ip=[::1] user=daffa
+[2026-08-06 10:20:40] [INFO] LOGIN_SUCCESS ip=[::1] user=daffa
+[2026-08-06 10:25:07] [INFO] LOGIN_SUCCESS ip=[::1] user=daffa
+[2026-08-06 10:27:17] [INFO] LOGIN_SUCCESS ip=[::1] user=daffa
+[2026-08-06 10:30:56] [INFO] LOGIN_SUCCESS ip=[::1] user=daffa
+[2026-08-06 11:01:30] [INFO] LOGIN_SUCCESS ip=[::1] user=daffa
+[2026-08-11 13:37:05] [WARN] INVALID_INPUT ip=[::1] register_failed user=daffa reason=password must contain at least 1 uppercase letter, 1 lowercase letter, and 1 number
+[2026-08-11 13:37:15] [WARN] INVALID_INPUT ip=[::1] register_failed user=daffa reason=username or email already exists
+[2026-08-11 13:37:18] [WARN] INVALID_INPUT ip=[::1] register_failed user=daffa reason=username or email already exists
+[2026-08-11 13:37:39] [WARN] INVALID_INPUT ip=[::1] register_failed user=Imai reason=username or email already exists
+[2026-08-11 13:38:05] [WARN] FAILED_LOGIN ip=[::1] login user=Imai
+[2026-08-11 13:38:15] [WARN] FAILED_LOGIN ip=[::1] login user=Imai
+[2026-08-11 13:38:17] [WARN] FAILED_LOGIN ip=[::1] login user=Imai

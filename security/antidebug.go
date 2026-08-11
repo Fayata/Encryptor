@@ -73,7 +73,7 @@ func CheckDebuggerAndExit() {
 	if IsDebuggerAttached() {
 		fmt.Println("\n  \033[31m\033[1m🚫 Security Alert: Debugger detected!\033[0m")
 		fmt.Println("  \033[31mFaycryptor cannot run under a debugger for security reasons.\033[0m")
-		fmt.Println("  \033[31mPlease close the debugger and try again.\033[0m\n")
+		fmt.Println("  \033[31mPlease close the debugger and try again.\033[0m")
 		os.Exit(1)
 	}
 }
@@ -87,7 +87,7 @@ func AntiDebugLoop(quit <-chan struct{}) {
 			return
 		default:
 			if IsDebuggerAttached() {
-				fmt.Println("\n  \033[31m\033[1m🚫 Security Alert: Debugger detected! Terminating...\033[0m\n")
+				fmt.Println("\n  \033[31m\033[1m🚫 Security Alert: Debugger detected! Terminating...\033[0m")
 
 				// Zero any global sensitive state here if needed
 

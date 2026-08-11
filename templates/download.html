@@ -1,0 +1,101 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Download Encryptor CLI</title>
+  <meta name="description" content="Download the Encryptor CLI terminal application for high-security file encryption with FayCipher, AES-256-GCM, and automatic cloud key sync.">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+
+<!-- Navigation -->
+<div class="topbar">
+  <div class="topbar-inner">
+    <a href="/" class="brand">
+      <div class="brand-mark">
+        <svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2 4 5v6c0 5 3.5 9 8 11 4.5-2 8-6 8-11V5l-8-3Z"/></svg>
+      </div>
+      <span class="brand-name">EncryptorVault</span>
+    </a>
+
+    <div class="nav-links">
+      <a class="nav-link" href="/">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="7.5" cy="15.5" r="5.5"/><path d="M21 2l-9.6 9.6"/><path d="m15.5 7.5 5.5-5.5"/><path d="m18 9 2-2"/></svg>
+        <span class="label">Key Vault</span>
+      </a>
+      <a class="nav-link active" href="/download">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12"/><path d="m7 10 5 5 5-5"/><path d="M5 21h14"/></svg>
+        <span class="label">CLI Download</span>
+      </a>
+    </div>
+
+    <div class="nav-right">
+      {{if .User}}
+      <div class="user-chip">
+        <div class="avatar">{{printf "%.1s" .User.Username}}</div>
+        <span>Logged in as <b>{{.User.Username}}</b></span>
+      </div>
+      <a href="/logout" class="btn-logout">Log out</a>
+      {{else}}
+      <a href="/login" class="btn-secondary btn-sm">Sign In</a>
+      <a href="/register" class="btn-primary btn-sm">Register</a>
+      {{end}}
+    </div>
+  </div>
+</div>
+
+<div class="page">
+
+  <!-- Download Hero -->
+  <div class="download-hero">
+    <!-- <div class="download-icon">
+       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M13 2 3 14h7l-1 8 10-12h-7l1-8Z"/></svg>
+    </div> -->
+    <h1>Download Encryptor CLI Tool</h1>
+    <p>High-security terminal application for file encryption and decryption. Features anti-debugger security, custom FayCipher algorithm, AES-256-GCM, and automatic cloud key synchronization.</p>
+    <div style="display: flex; justify-content: center; gap: 10px; flex-wrap: wrap;">
+      <a href="/api/download/cli" class="btn-primary" style="padding: 11px 24px; font-size: 14px;">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12"/><path d="m7 10 5 5 5-5"/><path d="M5 21h14"/></svg>
+        Download encryptor.exe (Windows 64-bit)
+      </a>
+    </div>
+  </div>
+
+  <!-- Instructions Card -->
+  <div class="instructions-card">
+    <h3>How to sync CLI application with your web account</h3>
+
+    <ol>
+      <li>
+        <strong>Step 1: Run the Terminal Application</strong><br>
+        Launch <code>encryptor.exe</code> in your terminal or by double clicking it.
+      </li>
+      <li>
+        <strong>Step 2: Link Your Web Account</strong><br>
+        Select the menu option <code>"Sync Account / Login"</code> in the CLI application and enter your web account username/email and password.
+      </li>
+      <li>
+        <strong>Step 3: Encrypt Files &amp; Manage Keys</strong><br>
+        Whenever you encrypt a folder or file using the CLI app, your encryption key and algorithm details will instantly be sent to your Web Key Vault. You can edit, replace, generate, or delete these keys anytime from this website!
+      </li>
+    </ol>
+
+    {{if .User}}
+    <div class="api-token-box">
+      <div class="token-label">Your unique API token (use to connect CLI directly):</div>
+      <div class="token-row">
+        <input type="text" value="{{.User.APIToken}}" readonly class="form-control mono" id="apiTokenInput">
+        <button onclick="copyToClipboard('{{.User.APIToken}}', 'API Token')" class="btn-secondary btn-sm" style="flex-shrink:0;">Copy token</button>
+      </div>
+    </div>
+    {{end}}
+  </div>
+
+</div>
+
+<script src="/static/app.js"></script>
+</body>
+</html>

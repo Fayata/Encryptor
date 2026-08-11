@@ -48,10 +48,12 @@ func ShowMainMenu() (string, error) {
 	err := huh.NewSelect[string]().
 		Title(" Main Menu — What would you like to do?").
 		Options(
-			huh.NewOption(" Encrypt Folder", "encrypt"),
-			huh.NewOption(" Decrypt Folder", "decrypt"),
-			huh.NewOption(" About", "about"),
-			huh.NewOption(" Exit", "exit"),
+			huh.NewOption(" 🔐 Encrypt Folder", "encrypt"),
+			huh.NewOption(" 🔓 Decrypt Folder", "decrypt"),
+			huh.NewOption(" 🌐 Link Web Account / Sync Login", "sync_login"),
+			// huh.NewOption(" 🔑 View Keys from Web Vault", "view_remote_keys"),
+			huh.NewOption(" ℹ️  About", "about"),
+			huh.NewOption(" 🚪 Exit", "exit"),
 		).
 		Value(&choice).
 		Run()
@@ -162,6 +164,39 @@ func InputPasswordWithConfirm() (string, error) {
 	}
 
 	return password, nil
+}
+
+// InputLoginCredentials prompts user for Server URL, Username/Email, and Password.
+func InputLoginCredentials() (string, string, string, error) {
+	var serverURL string = "http://localhost:8080"
+	var username string
+	var password string
+
+	err := huh.NewForm(
+		huh.NewGroup(
+			huh.NewInput().
+				Title("Server URL").
+				Placeholder("http://localhost:8080").
+				Value(&serverURL),
+			huh.NewInput().
+				Title("Username or Email").
+				Value(&username),
+			huh.NewInput().
+				Title("Password").
+				EchoMode(huh.EchoModePassword).
+				Value(&password),
+		),
+	).Run()
+
+	if err != nil {
+		return "", "", "", err
+	}
+
+	if serverURL == "" {
+		serverURL = "http://localhost:8080"
+	}
+
+	return serverURL, strings.TrimSpace(username), password, nil
 }
 
 func ConfirmAction(message string) (bool, error) {

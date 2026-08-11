@@ -1,0 +1,1234 @@
+<!DOCTYPE html>
+<html lang="id" data-theme="dark">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Faycryptor</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  html[data-theme="dark"]{
+    --bg: #0D0D0F;
+    --surface: #17171A;
+    --surface-2: #1E1E22;
+    --border: rgba(255,255,255,0.08);
+    --border-strong: rgba(255,255,255,0.16);
+    --text-primary: #EEEEF0;
+    --text-secondary: #97979F;
+    --text-muted: #616167;
+    --accent: #5E6AD2;
+    --accent-strong: #7B85E3;
+    --accent-tint: rgba(94,106,210,0.14);
+    --success: #4CB782;
+    --success-tint: rgba(76,183,130,0.14);
+    --danger: #F2555A;
+    --overlay: rgba(6,6,8,0.6);
+    --console-bg: #0A0A0C;
+  }
+  html[data-theme="light"]{
+    --bg: #FAFAFA;
+    --surface: #FFFFFF;
+    --surface-2: #F2F2F4;
+    --border: rgba(0,0,0,0.09);
+    --border-strong: rgba(0,0,0,0.16);
+    --text-primary: #17171A;
+    --text-secondary: #63636B;
+    --text-muted: #9A9AA1;
+    --accent: #4C58C9;
+    --accent-strong: #3E48B0;
+    --accent-tint: rgba(76,88,201,0.09);
+    --success: #1F8F5C;
+    --success-tint: rgba(31,143,92,0.1);
+    --danger: #D8383E;
+    --overlay: rgba(0,0,0,0.35);
+    --console-bg: #F5F5F6;
+  }
+
+  *{ box-sizing:border-box; }
+  html,body{ margin:0; padding:0; height:100%; background:var(--bg); color:var(--text-primary);
+    font-family:'Inter',-apple-system,BlinkMacSystemFont,sans-serif; -webkit-font-smoothing:antialiased;
+    overflow:hidden;
+  }
+  .mono{ font-family:'JetBrains Mono', ui-monospace, monospace; }
+  button{ font-family:inherit; cursor:pointer; }
+  input,select,textarea{ font-family:inherit; }
+
+  .window{ height:100vh; display:flex; flex-direction:column; border:1px solid var(--border); }
+
+  .titlebar{ height:36px; flex-shrink:0; background:var(--bg); display:flex; align-items:center; justify-content:space-between; padding:0 0 0 12px; border-bottom:1px solid var(--border); }
+  .titlebar-left{ display:flex; align-items:center; gap:8px; }
+  .titlebar-icon{ width:13px; height:13px; color:var(--accent); display:flex; }
+  .titlebar-icon svg{ width:13px; height:13px; }
+  .titlebar-title{ font-size:11.5px; color:var(--text-muted); font-weight:500; }
+  .titlebar-controls{ display:flex; align-items:stretch; height:100%; }
+  .tb-btn{ width:42px; height:100%; border:none; background:transparent; color:var(--text-muted); display:flex; align-items:center; justify-content:center; }
+  .tb-btn svg{ width:10px; height:10px; }
+  .tb-btn:hover{ background: var(--surface-2); color:var(--text-primary); }
+  .tb-btn.close:hover{ background:#E5484D; color:#fff; }
+
+  .shell{ flex:1; min-height:0; display:flex; }
+
+  /* ---------- SIDEBAR ---------- */
+  .sidebar{ width: 200px; flex-shrink:0; background: var(--bg); border-right:1px solid var(--border); display:flex; flex-direction:column; padding: 12px 8px; }
+  .workspace{ display:flex; align-items:center; gap:8px; padding:7px 8px; border-radius:7px; margin-bottom:0; width:100%; border:none; background:transparent; text-align:left; }
+  .ws-wrap{ position:relative; margin-bottom:14px; }
+  .workspace:hover{ background:var(--surface-2); }
+  .ws-mark{ width:20px; height:20px; border-radius:5px; background:var(--accent); color:#fff; display:flex; align-items:center; justify-content:center; flex-shrink:0; }
+  .ws-mark svg{ width:11px; height:11px; }
+  .ws-name{ font-size:12.5px; font-weight:600; flex:1; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .ws-chevron{ width:11px; height:11px; color:var(--text-muted); flex-shrink:0; }
+
+  .ws-menu{
+    display:none; position:absolute; top:calc(100% + 4px); left:0; width:260px; z-index:50;
+    background:var(--surface); border:1px solid var(--border-strong); border-radius:10px;
+    box-shadow:0 12px 32px rgba(0,0,0,0.35); padding:6px;
+  }
+  .ws-menu.open{ display:block; }
+  .ws-menu-label{ font-size:10px; font-weight:600; letter-spacing:0.04em; text-transform:uppercase; color:var(--text-muted); padding:6px 8px 4px; }
+  .ws-menu-item{
+    display:flex; align-items:center; gap:9px; width:100%; padding:8px; border-radius:7px;
+    border:none; background:transparent; color:var(--text-secondary); font-size:12.5px; text-align:left;
+  }
+  .ws-menu-item:hover{ background:var(--surface-2); color:var(--text-primary); }
+  .ws-menu-item.active{ color:var(--text-primary); font-weight:600; }
+  .ws-menu-item span{ flex:1; }
+  .ws-menu-item svg{ width:14px; height:14px; flex-shrink:0; }
+  .ws-menu-icon{ width:20px; height:20px; border-radius:5px; background:var(--surface-2); border:1px solid var(--border); display:flex; align-items:center; justify-content:center; flex-shrink:0; color:var(--text-secondary); }
+  .ws-menu-icon svg{ width:11px; height:11px; }
+  .ws-menu-divider{ height:1px; background:var(--border); margin:6px 4px; }
+
+  .notif-wrap{ position:relative; }
+  .notif-dot{
+    position:absolute; top:5px; right:5px; width:7px; height:7px; border-radius:50%;
+    background:var(--danger); border:1.5px solid var(--surface);
+  }
+  .invite-row{ display:flex; align-items:flex-start; gap:9px; padding:8px 8px 6px; }
+  .invite-text{ font-size:12px; color:var(--text-secondary); line-height:1.5; }
+  .invite-text strong{ color:var(--text-primary); font-weight:600; }
+  .invite-text b{ color:var(--text-primary); font-weight:600; }
+  .invite-actions{ display:flex; gap:6px; padding:0 8px 10px; }
+
+  .nav-group{ margin-bottom:14px; }
+  .nav-label{ font-size:10.5px; font-weight:600; letter-spacing:0.04em; text-transform:uppercase; color:var(--text-muted); padding: 3px 9px 6px; }
+  .nav-item{ position:relative; display:flex; align-items:center; gap:9px; width:100%; padding: 6.5px 9px; border-radius:6px; border:none; background:transparent; color:var(--text-secondary); font-size:13px; font-weight:450; text-align:left; margin-bottom:1px; }
+  .nav-item svg{ width:14.5px; height:14.5px; flex-shrink:0; }
+  .nav-item:hover{ background: var(--surface-2); color:var(--text-primary); }
+  .nav-item.active{ background: var(--accent-tint); color: var(--accent); font-weight:600; }
+  .nav-badge{ margin-left:auto; font-size:10px; font-weight:700; background:var(--accent); color:#fff; border-radius:999px; padding:1px 6px; }
+
+  .sidebar-footer{ margin-top:auto; padding: 8px 9px; border-top:1px solid var(--border); display:flex; align-items:center; gap:8px; }
+  .avatar{ width:22px; height:22px; border-radius:6px; background:var(--surface-2); border:1px solid var(--border); display:flex; align-items:center; justify-content:center; font-size:10px; font-weight:700; color:var(--text-secondary); flex-shrink:0; }
+  .footer-info{ flex:1; min-width:0; }
+  .footer-info strong{ display:block; font-size:12px; font-weight:600; }
+  .footer-info span{ display:flex; align-items:center; gap:5px; font-size:10.5px; color:var(--text-muted); }
+  .footer-dot{ width:5px; height:5px; border-radius:50%; background:var(--success); }
+
+  /* ---------- MAIN ---------- */
+  .main{ flex:1; min-width:0; display:flex; flex-direction:column; overflow:hidden; }
+  .main-header{ padding: 14px 24px; border-bottom:1px solid var(--border); flex-shrink:0; display:flex; align-items:center; justify-content:space-between; }
+  .breadcrumb{ display:flex; align-items:center; gap:6px; font-size:13px; color:var(--text-muted); }
+  .breadcrumb b{ color:var(--text-primary); font-weight:600; }
+  .header-actions{ display:flex; align-items:center; gap:8px; }
+  .btn-icon-sm{ width:28px; height:28px; border-radius:7px; border:1px solid var(--border); background:var(--surface); color:var(--text-secondary); display:flex; align-items:center; justify-content:center; }
+  .btn-icon-sm:hover{ color:var(--text-primary); border-color:var(--border-strong); }
+  .btn-icon-sm svg{ width:14px; height:14px; }
+
+  .main-body{ flex:1; overflow-y:auto; padding: 22px 24px 40px; }
+  .view{ display:none; }
+  .view.active{ display:block; }
+  .view-narrow{ max-width:640px; }
+
+  .split{ display:grid; grid-template-columns: 1fr 300px; gap:16px; align-items:start; }
+
+  .panel{ background: var(--surface); border:1px solid var(--border); border-radius:10px; margin-bottom:14px; overflow:hidden; }
+  .panel-head{ padding:12px 16px; border-bottom:1px solid var(--border); display:flex; align-items:center; justify-content:space-between; }
+  .panel-head h3{ font-size:12.5px; font-weight:600; margin:0; color:var(--text-primary); }
+  .panel-body{ padding:16px; }
+
+  /* ---------- HOME ---------- */
+  .home-grid{ display:grid; grid-template-columns: repeat(4,1fr); gap:1px; background:var(--border); border:1px solid var(--border); border-radius:10px; overflow:hidden; margin-bottom:18px; }
+  .metric{ background:var(--surface); padding:14px 16px; }
+  .metric-label{ font-size:11px; color:var(--text-muted); margin-bottom:6px; display:flex; align-items:center; gap:5px; }
+  .metric-value{ font-size:19px; font-weight:700; letter-spacing:-0.3px; font-family:'JetBrains Mono',monospace; }
+  .metric-value.ok{ color:var(--success); }
+
+  .quick-list{ display:flex; flex-direction:column; gap:6px; margin-bottom:18px; }
+  .quick-item{ display:flex; align-items:center; gap:12px; width:100%; text-align:left; background:var(--surface); border:1px solid var(--border); border-radius:9px; padding:12px 14px; }
+  .quick-item:hover{ border-color:var(--border-strong); background:var(--surface-2); }
+  .quick-icon{ width:30px; height:30px; border-radius:7px; background:var(--surface-2); border:1px solid var(--border); display:flex; align-items:center; justify-content:center; color:var(--text-secondary); flex-shrink:0; }
+  .quick-icon svg{ width:14px; height:14px; }
+  .quick-text{ flex:1; min-width:0; }
+  .quick-text strong{ display:block; font-size:13px; font-weight:600; }
+  .quick-text span{ font-size:11.5px; color:var(--text-muted); }
+
+  .log-feed{ display:flex; flex-direction:column; }
+  .log-row{ display:flex; align-items:center; gap:10px; padding:9px 16px; border-bottom:1px solid var(--border); font-size:12.5px; }
+  .log-row:last-child{ border-bottom:none; }
+  .log-tag{ font-size:10px; font-weight:700; padding:2px 6px; border-radius:4px; text-transform:uppercase; letter-spacing:0.03em; flex-shrink:0; }
+  .log-tag.enc{ background:var(--accent-tint); color:var(--accent); }
+  .log-tag.sync{ background:var(--success-tint); color:var(--success); }
+  .log-row span.name{ font-family:'JetBrains Mono',monospace; color:var(--text-primary); flex:1; }
+  .log-row time{ color:var(--text-muted); font-size:11px; }
+
+  /* ---------- FORMS ---------- */
+  .field{ margin-bottom:16px; }
+  .field:last-child{ margin-bottom:0; }
+  .field-label{ display:block; font-size:12px; font-weight:600; color:var(--text-secondary); margin-bottom:7px; text-transform:uppercase; letter-spacing:0.03em; }
+  .field-hint{ font-size:11.5px; color:var(--text-muted); margin-top:6px; }
+  .path-row{ display:flex; gap:8px; }
+  .path-input{ flex:1; background:var(--bg); border:1px solid var(--border); border-radius:6px; padding:9px 11px; font-size:12px; color:var(--text-secondary); }
+  .btn-utility{ display:flex; align-items:center; gap:6px; white-space:nowrap; background:var(--surface-2); border:1px solid var(--border); color:var(--text-primary); font-size:12px; font-weight:500; padding:0 12px; border-radius:6px; }
+  .btn-utility:hover{ border-color: var(--border-strong); }
+  .btn-utility svg{ width:13px; height:13px; }
+
+  .segmented{ display:flex; flex-wrap:wrap; gap:6px; }
+  .segmented input{ display:none; }
+  .segmented label{ display:flex; align-items:center; gap:6px; padding: 6px 11px; border-radius:6px; border:1px solid var(--border); color:var(--text-secondary); font-size:11.5px; background:var(--bg); }
+  .segmented input:checked + label{ border-color: var(--accent); color: var(--accent); background:var(--accent-tint); font-weight:600; }
+
+  .input-group{ position:relative; }
+  .text-input{ width:100%; background:var(--bg); border:1px solid var(--border); border-radius:6px; padding:9px 38px 9px 11px; font-size:12.5px; color:var(--text-primary); outline:none; }
+  .text-input:focus{ border-color: var(--accent); }
+  .input-icon-btn{ position:absolute; right:5px; top:50%; transform:translateY(-50%); width:24px; height:24px; border-radius:5px; border:none; background:transparent; color:var(--text-muted); display:flex; align-items:center; justify-content:center; }
+  .input-icon-btn:hover{ color:var(--text-primary); }
+  .input-icon-btn svg{ width:13px; height:13px; }
+
+  .toggle-row{ display:flex; align-items:center; justify-content:space-between; padding: 11px 0; border-top:1px solid var(--border); }
+  .toggle-row:last-of-type{ border-bottom:1px solid var(--border); }
+  .toggle-text strong{ display:block; font-size:12.5px; font-weight:600; margin-bottom:2px; }
+  .toggle-text span{ font-size:11px; color:var(--text-muted); }
+  .switch{ position:relative; width:32px; height:18px; flex-shrink:0; }
+  .switch input{ display:none; }
+  .switch label{ position:absolute; inset:0; background:var(--border-strong); border-radius:9px; transition:.15s; }
+  .switch label::after{ content:""; position:absolute; top:2px; left:2px; width:14px; height:14px; border-radius:50%; background:#fff; transition:.15s; }
+  .switch input:checked + label{ background: var(--accent); }
+  .switch input:checked + label::after{ transform: translateX(14px); }
+  .switch.locked input:checked + label{ background: var(--text-muted); opacity:0.7; }
+
+  .actions-row{ display:flex; align-items:center; gap:8px; margin-top:18px; }
+  .btn-primary{ display:flex; align-items:center; gap:7px; background: var(--accent); color:#fff; font-weight:600; font-size:12.5px; border:none; border-radius:7px; padding:9px 16px; }
+  .btn-primary:hover{ background: var(--accent-strong); }
+  .btn-primary svg{ width:13px; height:13px; }
+  .btn-primary:disabled{ opacity:0.4; cursor:not-allowed; }
+  .btn-secondary{ background:var(--surface-2); border:1px solid var(--border); color:var(--text-primary); font-size:12.5px; font-weight:500; padding:9px 14px; border-radius:7px; }
+  .btn-secondary:hover{ border-color: var(--border-strong); }
+
+  .console{ background: var(--console-bg); border:1px solid var(--border); border-radius:8px; overflow:hidden; margin-top:14px; }
+  .console-head{ display:flex; align-items:center; justify-content:space-between; padding: 8px 12px; border-bottom:1px solid var(--border); }
+  .console-head span{ font-size:10px; color:var(--text-muted); letter-spacing:0.04em; text-transform:uppercase; font-weight:600; }
+  .console-body{ padding: 10px 12px; font-size:11.5px; line-height:1.85; color: var(--text-secondary); max-height:120px; overflow-y:auto; }
+  .console-line{ display:flex; gap:8px; }
+  .console-line .t{ color:var(--text-muted); flex-shrink:0; }
+  .console-line.ok{ color:var(--success); }
+
+  .status-panel{ display:flex; align-items:center; justify-content:space-between; padding:14px 16px; }
+  .status-left{ display:flex; align-items:center; gap:11px; }
+  .status-dot-lg{ width:9px; height:9px; border-radius:50%; background:var(--success); box-shadow:0 0 0 3px var(--success-tint); flex-shrink:0; }
+  .status-left h3{ font-size:13px; font-weight:600; margin:0 0 2px; }
+  .status-left p{ font-size:11.5px; color:var(--text-muted); margin:0; font-family:'JetBrains Mono',monospace; }
+
+  .kv-table-wrap .panel-body{ padding:0; }
+  table{ width:100%; border-collapse:collapse; }
+  thead th{ text-align:left; font-size:10.5px; font-weight:600; letter-spacing:0.04em; color:var(--text-muted); text-transform:uppercase; padding:10px 16px; border-bottom:1px solid var(--border); }
+  tbody td{ padding:11px 16px; font-size:12.5px; color:var(--text-primary); border-bottom:1px solid var(--border); vertical-align:middle; }
+  tbody tr:last-child td{ border-bottom:none; }
+  tbody tr:hover{ background:var(--surface-2); }
+  .kv-name{ display:flex; align-items:center; gap:9px; font-weight:500; font-family:'JetBrains Mono',monospace; }
+  .kv-icon{ width:22px; height:22px; border-radius:5px; background:var(--surface-2); border:1px solid var(--border); color:var(--text-muted); display:flex; align-items:center; justify-content:center; flex-shrink:0; }
+  .kv-icon svg{ width:11px; height:11px; }
+
+  .about-mark{ width:40px; height:40px; border-radius:9px; background:var(--accent-tint); color:var(--accent); display:flex; align-items:center; justify-content:center; }
+  .about-mark svg{ width:19px; height:19px; }
+  .about-header{ display:flex; align-items:center; gap:12px; margin-bottom:16px; }
+  .about-header h2{ font-size:16px; font-weight:700; margin:0 0 2px; }
+  .about-header span{ font-size:11.5px; color:var(--text-muted); font-family:'JetBrains Mono',monospace; }
+  .about-desc{ font-size:12.5px; color:var(--text-secondary); line-height:1.65; margin-bottom:14px; }
+
+  /* ---------- ORG CHART (Lark-style) ---------- */
+  .org-search-row{ margin-bottom:14px; }
+  .cmdk-trigger{
+    display:flex; align-items:center; gap:8px;
+    background:var(--surface-2); border:1px solid var(--border); border-radius:7px;
+    padding:9px 11px; color:var(--text-muted); font-size:12.5px;
+  }
+  .cmdk-trigger svg{ width:14px; height:14px; flex-shrink:0; }
+  .org-search-row .cmdk-trigger:hover{ border-color:var(--border-strong); }
+  .org-layout{ display:grid; grid-template-columns: 240px 1fr; gap:14px; align-items:start; }
+
+  .org-tree{ padding:8px; }
+  .tree-node{
+    display:flex; align-items:center; gap:8px; padding:7px 8px; border-radius:6px;
+    font-size:12.5px; color:var(--text-secondary); cursor:pointer;
+  }
+  .tree-node:hover{ background:var(--surface-2); color:var(--text-primary); }
+  .tree-node.active{ background:var(--accent-tint); color:var(--accent); font-weight:600; }
+  .tree-node.root{ font-weight:600; color:var(--text-primary); margin-bottom:2px; }
+  .tree-node.root svg:not(.tree-caret){ width:14px; height:14px; flex-shrink:0; }
+  .tree-caret{ width:11px; height:11px; flex-shrink:0; color:var(--text-muted); }
+  .tree-children{ padding-left:20px; border-left:1px solid var(--border); margin-left:11px; }
+  .tree-dot{ width:5px; height:5px; border-radius:50%; background:var(--text-muted); flex-shrink:0; }
+  .tree-node.active .tree-dot{ background:var(--accent); }
+  .tree-count{ margin-left:auto; font-size:11px; color:var(--text-muted); font-family:'JetBrains Mono',monospace; }
+
+  .member-grid{ display:grid; grid-template-columns: repeat(2,1fr); gap:1px; background:var(--border); }
+  .member-card{
+    display:flex; align-items:center; gap:10px; background:var(--surface); padding:12px 14px;
+  }
+  .member-avatar{ width:32px; height:32px; border-radius:50%; background:var(--surface-2); border:1px solid var(--border); display:flex; align-items:center; justify-content:center; font-size:11px; font-weight:700; color:var(--text-secondary); flex-shrink:0; }
+  .member-info{ flex:1; min-width:0; }
+  .member-info strong{ display:block; font-size:12.5px; font-weight:600; }
+  .member-info span{ font-size:11px; color:var(--text-muted); }
+  .member-card .btn-utility{ flex-shrink:0; padding:5px 9px; font-size:11px; }
+  @media (max-width: 900px){
+    .org-layout{ grid-template-columns: 1fr; }
+    .member-grid{ grid-template-columns: 1fr; }
+  }
+
+  /* ---------- SHARING (new) ---------- */
+  .recipient-tags{ display:flex; flex-wrap:wrap; gap:6px; margin-top:8px; }
+  .recipient-tag{ display:flex; align-items:center; gap:6px; background:var(--surface-2); border:1px solid var(--border); border-radius:999px; padding:4px 5px 4px 5px; font-size:12px; }
+  .recipient-tag .rt-avatar{ width:18px; height:18px; border-radius:50%; background:var(--accent-tint); color:var(--accent); font-size:9px; font-weight:700; display:flex; align-items:center; justify-content:center; }
+  .recipient-tag button{ width:14px; height:14px; border:none; background:transparent; color:var(--text-muted); display:flex; align-items:center; justify-content:center; padding:0; }
+  .recipient-tag button svg{ width:10px; height:10px; }
+
+  .note-card{ display:flex; gap:10px; padding:12px 14px; border-radius:8px; background:var(--accent-tint); border:1px solid var(--border); }
+  .note-card svg{ width:15px; height:15px; color:var(--accent); flex-shrink:0; margin-top:1px; }
+  .note-card p{ font-size:11.5px; color:var(--text-secondary); margin:0; line-height:1.55; }
+
+  .file-chip{ display:flex; align-items:center; gap:10px; padding:11px 12px; background:var(--bg); border:1px solid var(--border); border-radius:8px; }
+  .file-chip .fc-icon{ width:30px; height:30px; border-radius:7px; background:var(--surface-2); border:1px solid var(--border); display:flex; align-items:center; justify-content:center; color:var(--text-secondary); flex-shrink:0; }
+  .file-chip .fc-icon svg{ width:14px; height:14px; }
+  .file-chip .fc-text{ flex:1; min-width:0; }
+  .file-chip .fc-text strong{ display:block; font-size:12.5px; font-weight:600; font-family:'JetBrains Mono',monospace; }
+  .file-chip .fc-text span{ font-size:11px; color:var(--text-muted); }
+
+  .send-file-list{ display:flex; flex-direction:column; gap:6px; margin-top:8px; }
+  .send-file-row{ display:flex; align-items:center; gap:10px; padding:9px 10px; border:1px solid var(--border); border-radius:8px; cursor:pointer; }
+  .send-file-row:has(input:checked){ border-color:var(--accent); background:var(--accent-tint); }
+  .send-file-row input{ accent-color:var(--accent); flex-shrink:0; }
+  .send-file-text{ flex:1; min-width:0; }
+  .send-file-text strong{ display:block; font-size:12.5px; font-weight:600; font-family:'JetBrains Mono',monospace; }
+  .send-file-text span{ font-size:11px; color:var(--text-muted); }
+
+  .rule-option{ display:flex; align-items:flex-start; gap:10px; padding:10px 4px; cursor:pointer; }
+  .rule-option input{ accent-color:var(--accent); margin-top:2px; flex-shrink:0; }
+  .rule-text strong{ display:block; font-size:12.5px; font-weight:600; margin-bottom:2px; }
+  .rule-text span{ font-size:11.5px; color:var(--text-muted); line-height:1.5; }
+  .share-limit-row{ display:flex; align-items:center; gap:6px; padding:0 4px 8px 32px; }
+
+  .status-pill{ display:inline-flex; align-items:center; gap:5px; font-size:11px; font-weight:600; padding:3px 9px; border-radius:999px; }
+  .status-pill.locked{ background:var(--surface-2); color:var(--text-muted); border:1px solid var(--border); }
+  .status-pill.opened{ background:var(--success-tint); color:var(--success); }
+  .status-pill svg{ width:11px; height:11px; }
+
+  .sender-cell{ display:flex; align-items:center; gap:8px; }
+  .sender-avatar{ width:22px; height:22px; border-radius:50%; background:var(--surface-2); border:1px solid var(--border); font-size:9.5px; font-weight:700; display:flex; align-items:center; justify-content:center; color:var(--text-secondary); flex-shrink:0; }
+
+  /* ---------- VIEWER MODAL (view-only, no export) ---------- */
+  .viewer-overlay{ position:fixed; inset:0; background:var(--overlay); display:none; align-items:center; justify-content:center; z-index:100; }
+  .viewer-overlay.open{ display:flex; }
+  .viewer-modal{ width:520px; max-width:92vw; background:var(--surface); border:1px solid var(--border-strong); border-radius:12px; overflow:hidden; box-shadow:0 20px 60px rgba(0,0,0,0.4); }
+  .viewer-head{ display:flex; align-items:center; justify-content:space-between; padding:13px 16px; border-bottom:1px solid var(--border); }
+  .viewer-head h3{ font-size:13px; font-weight:600; margin:0; font-family:'JetBrains Mono',monospace; }
+  .viewer-close{ width:24px; height:24px; border-radius:6px; border:none; background:transparent; color:var(--text-muted); display:flex; align-items:center; justify-content:center; }
+  .viewer-close:hover{ color:var(--text-primary); background:var(--surface-2); }
+  .viewer-close svg{ width:14px; height:14px; }
+  .viewer-body{ padding:20px 16px; text-align:center; }
+  .viewer-watermark{ display:inline-flex; align-items:center; gap:6px; font-size:11px; font-weight:600; color:var(--text-muted); background:var(--surface-2); border:1px solid var(--border); border-radius:999px; padding:4px 11px; margin-bottom:14px; }
+  .viewer-watermark svg{ width:11px; height:11px; }
+  .viewer-preview{ background:var(--bg); border:1px solid var(--border); border-radius:8px; padding:26px 16px; font-size:12px; color:var(--text-secondary); font-family:'JetBrains Mono',monospace; }
+  .viewer-foot{ display:flex; align-items:center; justify-content:space-between; padding:12px 16px; border-top:1px solid var(--border); }
+  .viewer-foot .field-hint{ margin:0; text-align:left; }
+</style>
+</head>
+<body>
+
+<div class="window">
+
+  <div class="titlebar">
+    <div class="titlebar-left">
+      <div class="titlebar-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2 4 5v6c0 5 3.5 9 8 11 4.5-2 8-6 8-11V5l-8-3Z"/></svg></div>
+      <span class="titlebar-title">Faycryptor</span>
+    </div>
+    <div class="titlebar-controls">
+      <button class="tb-btn"><svg viewBox="0 0 10 10"><rect x="0" y="4.5" width="10" height="1" fill="currentColor"/></svg></button>
+      <button class="tb-btn"><svg viewBox="0 0 10 10"><rect x="0.5" y="0.5" width="9" height="9" fill="none" stroke="currentColor"/></svg></button>
+      <button class="tb-btn close"><svg viewBox="0 0 10 10"><line x1="0" y1="0" x2="10" y2="10" stroke="currentColor"/><line x1="10" y1="0" x2="0" y2="10" stroke="currentColor"/></svg></button>
+    </div>
+  </div>
+
+  <div class="shell">
+
+    <div class="sidebar">
+      <div class="ws-wrap">
+        <button class="workspace" onclick="toggleWsMenu(event)">
+          <div class="ws-mark"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2 4 5v6c0 5 3.5 9 8 11 4.5-2 8-6 8-11V5l-8-3Z"/></svg></div>
+          <span class="ws-name">Fayata Digital Nusantara</span>
+          <svg class="ws-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg>
+        </button>
+        <div class="ws-menu" id="wsMenu">
+          <div class="ws-menu-label">Organisasi Saya</div>
+          <button class="ws-menu-item active">
+            <div class="ws-menu-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 21h18"/><path d="M5 21V7l7-4 7 4v14"/></svg></div>
+            <span>Fayata Digital Nusantara</span>
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>
+          </button>
+          <button class="ws-menu-item">
+            <div class="ws-menu-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 21h18"/><path d="M5 21V7l7-4 7 4v14"/></svg></div>
+            <span>Klien Rangga Studio</span>
+          </button>
+          <div class="ws-menu-divider"></div>
+          <button class="ws-menu-item" onclick="openCreateOrg()">
+            <div class="ws-menu-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14M5 12h14"/></svg></div>
+            <span>Buat Organisasi Baru</span>
+          </button>
+          <button class="ws-menu-item" onclick="openJoinOrg()">
+            <div class="ws-menu-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4"/><path d="M10 17l5-5-5-5"/><path d="M15 12H3"/></svg></div>
+            <span>Gabung dengan Kode Undangan</span>
+          </button>
+        </div>
+      </div>
+
+      <div class="nav-group">
+        <button class="nav-item active" data-view="home">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 10.5 12 3l9 7.5"/><path d="M5 9.5V21h14V9.5"/></svg>
+          Home
+        </button>
+      </div>
+
+      <div class="nav-group">
+        <div class="nav-label">File Operations</div>
+        <button class="nav-item" data-view="encrypt">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="10" width="16" height="10" rx="2"/><path d="M8 10V7a4 4 0 0 1 8 0v3"/></svg>
+          Encrypt
+        </button>
+        <button class="nav-item" data-view="decrypt">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="10" width="16" height="10" rx="2"/><path d="M8 10V7a4 4 0 0 1 7-2.6"/></svg>
+          Decrypt
+        </button>
+      </div>
+
+      <div class="nav-group">
+        <div class="nav-label">Organisasi</div>
+        <button class="nav-item" data-view="org">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 21h18"/><path d="M5 21V7l7-4 7 4v14"/><path d="M9 9h1M14 9h1M9 13h1M14 13h1M9 21v-4h6v4"/></svg>
+          Organisasi
+        </button>
+      </div>
+
+      <div class="nav-group">
+        <div class="nav-label">Koneksi</div>
+        <button class="nav-item" data-view="connections">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+          Koneksi Saya
+        </button>
+      </div>
+
+      <div class="nav-group">
+        <div class="nav-label">Web Vault</div>
+        <button class="nav-item" data-view="sync">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M3 12h18"/><path d="M12 3a14 14 0 0 1 0 18"/><path d="M12 3a14 14 0 0 0 0 18"/></svg>
+          Link Account
+        </button>
+        <button class="nav-item" data-view="keys">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="7.5" cy="15.5" r="5.5"/><path d="M21 2l-9.6 9.6"/><path d="m15.5 7.5 5.5-5.5"/></svg>
+          View Keys
+        </button>
+      </div>
+
+      <div class="nav-group">
+        <div class="nav-label">General</div>
+        <button class="nav-item" data-view="settings">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1Z"/></svg>
+          Settings
+        </button>
+        <button class="nav-item" data-view="about">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4"/><path d="M12 8h.01"/></svg>
+          About
+        </button>
+      </div>
+
+      <div class="sidebar-footer">
+        <div class="avatar">D</div>
+        <div class="footer-info">
+          <strong>daffa</strong>
+          <span><span class="footer-dot"></span>Vault connected</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="main">
+      <div class="main-header">
+        <div class="breadcrumb">Faycryptor / <b id="crumb">Home</b></div>
+        <div class="header-actions">
+          <div class="notif-wrap">
+            <button class="btn-icon-sm" title="Notifikasi" onclick="toggleNotif(event)" style="position:relative;">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.7 21a2 2 0 0 1-3.4 0"/></svg>
+              <span class="notif-dot"></span>
+            </button>
+            <div class="ws-menu" id="notifMenu" style="width:300px;right:0;left:auto;">
+              <div class="ws-menu-label">Undangan Organisasi</div>
+              <div class="invite-row">
+                <div class="ws-menu-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 21h18"/><path d="M5 21V7l7-4 7 4v14"/></svg></div>
+                <div class="invite-text"><strong>budi.s</strong> mengundang Anda ke <b>Klien Rangga Studio</b></div>
+              </div>
+              <div class="invite-actions">
+                <button class="btn-primary" style="flex:1;justify-content:center;padding:6px;">Terima</button>
+                <button class="btn-secondary" style="flex:1;justify-content:center;padding:6px;">Tolak</button>
+              </div>
+              <div class="ws-menu-divider"></div>
+              <div class="ws-menu-label">Permintaan Koneksi</div>
+              <div class="invite-row">
+                <div class="ws-menu-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/></svg></div>
+                <div class="invite-text"><strong>bagus.p</strong> ingin terhubung dengan Anda</div>
+              </div>
+              <div class="invite-actions">
+                <button class="btn-primary" style="flex:1;justify-content:center;padding:6px;">Terima</button>
+                <button class="btn-secondary" style="flex:1;justify-content:center;padding:6px;">Tolak</button>
+              </div>
+            </div>
+          </div>
+          <button class="btn-icon-sm" title="Bantuan"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M9.1 9a3 3 0 0 1 5.82 1c0 2-3 2-3 4"/><path d="M12 17h.01"/></svg></button>
+        </div>
+      </div>
+
+      <div class="main-body">
+
+        <!-- HOME -->
+        <div class="view active" id="view-home">
+          <div class="home-grid">
+            <div class="metric"><div class="metric-label">Files encrypted</div><div class="metric-value">18</div></div>
+            <div class="metric"><div class="metric-label">Vault keys</div><div class="metric-value">2</div></div>
+            <div class="metric"><div class="metric-label">Shared with me</div><div class="metric-value">2</div></div>
+            <div class="metric"><div class="metric-label">Vault status</div><div class="metric-value ok">● online</div></div>
+          </div>
+
+          <div class="quick-list">
+            <button class="quick-item" data-view="encrypt">
+              <div class="quick-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="10" width="16" height="10" rx="2"/><path d="M8 10V7a4 4 0 0 1 8 0v3"/></svg></div>
+              <div class="quick-text"><strong>Encrypt</strong><span>Pilih 1 file atau seluruh folder untuk dienkripsi</span></div>
+            </button>
+            <button class="quick-item" data-view="decrypt">
+              <div class="quick-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="10" width="16" height="10" rx="2"/><path d="M8 10V7a4 4 0 0 1 7-2.6"/></svg></div>
+              <div class="quick-text"><strong>Decrypt</strong><span>2 file dari koneksi menunggu dibuka</span></div>
+            </button>
+            <button class="quick-item" data-view="connections">
+              <div class="quick-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg></div>
+              <div class="quick-text"><strong>Koneksi Saya</strong><span>Kirim file terenkripsi langsung ke koneksi Anda</span></div>
+            </button>
+          </div>
+
+          <div class="panel">
+            <div class="panel-head"><h3>Aktivitas Terbaru</h3></div>
+            <div class="log-feed">
+              <div class="log-row"><span class="log-tag enc">ENC</span><span class="name">reports-vault-01</span><time>2j lalu</time></div>
+              <div class="log-row"><span class="log-tag sync">SHARE</span><span class="name">dikirim ke rangga</span><time>Kemarin</time></div>
+              <div class="log-row"><span class="log-tag sync">SYNC</span><span class="name">backup-agustus</span><time>Kemarin</time></div>
+            </div>
+          </div>
+        </div>
+
+        <!-- ENCRYPT -->
+        <div class="view" id="view-encrypt">
+          <div class="split">
+            <div>
+              <div class="panel">
+                <div class="panel-head"><h3>Encrypt</h3></div>
+                <div class="panel-body">
+                  <div class="field">
+                    <label class="field-label">File atau folder target</label>
+                    <div class="path-row">
+                      <div class="path-input mono">C:\Users\daffa\Documents\reports</div>
+                      <button class="btn-utility"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2Z"/></svg>Browse</button>
+                    </div>
+                    <div class="field-hint">Bisa memilih 1 file, atau seluruh folder sekaligus.</div>
+                  </div>
+                  <div class="field">
+                    <label class="field-label">Algoritma</label>
+                    <div class="segmented mono">
+                      <input type="radio" name="algo" id="a1" checked><label for="a1">AES-256-GCM</label>
+                      <input type="radio" name="algo" id="a2"><label for="a2">AES-256-CBC</label>
+                      <input type="radio" name="algo" id="a3"><label for="a3">XChaCha20-Poly1305</label>
+                      <input type="radio" name="algo" id="a4"><label for="a4">3DES</label>
+                    </div>
+                  </div>
+                  <div class="field">
+                    <label class="field-label">Kata sandi</label>
+                    <div class="input-group">
+                      <input type="password" class="text-input" value="••••••••••••••">
+                      <button class="input-icon-btn"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-7 11-7 11 7 11 7-4 7-11 7-11-7-11-7Z"/><circle cx="12" cy="12" r="3"/></svg></button>
+                    </div>
+                  </div>
+                  <div class="toggle-row">
+                    <div class="toggle-text"><strong>Sync ke Web Vault</strong><span>Simpan kunci otomatis setelah proses selesai</span></div>
+                    <div class="switch"><input type="checkbox" id="syncToggle" checked><label for="syncToggle"></label></div>
+                  </div>
+                  <div class="toggle-row">
+                    <div class="toggle-text"><strong>Hapus file asli</strong><span>File sumber dihapus permanen setelah berhasil</span></div>
+                    <div class="switch"><input type="checkbox" id="deleteToggle"><label for="deleteToggle"></label></div>
+                  </div>
+                  <div class="actions-row">
+                    <button class="btn-primary">Encrypt</button>
+                    <button class="btn-secondary">Generate key</button>
+                  </div>
+                </div>
+              </div>
+              <div class="console">
+                <div class="console-head"><span>Process Log</span></div>
+                <div class="console-body mono">
+                  <div class="console-line"><span class="t">15:30:41</span><span>security protections active</span></div>
+                  <div class="console-line"><span class="t">15:30:41</span><span>web vault reachable at localhost:8080</span></div>
+                  <div class="console-line ok"><span class="t">15:30:44</span><span>ready — waiting for encryption…</span></div>
+                </div>
+              </div>
+            </div>
+
+            <div>
+              <div class="panel">
+                <div class="panel-head"><h3>Isi Target</h3></div>
+                <div class="panel-body" style="padding:8px 10px;">
+                  <div class="log-feed">
+                    <div class="log-row" style="border:none;padding:8px 6px;"><span class="mono" style="flex:1;">Q3_summary.pdf</span><span style="color:var(--text-muted);font-size:11px;">2.1 MB</span></div>
+                    <div class="log-row" style="border:none;padding:8px 6px;"><span class="mono" style="flex:1;">invoices.xlsx</span><span style="color:var(--text-muted);font-size:11px;">640 KB</span></div>
+                    <div class="log-row" style="border:none;padding:8px 6px;"><span class="mono" style="flex:1;">notes.txt</span><span style="color:var(--text-muted);font-size:11px;">4 KB</span></div>
+                  </div>
+                </div>
+              </div>
+              <div class="note-card">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2 4 5v6c0 5 3.5 9 8 11 4.5-2 8-6 8-11V5l-8-3Z"/></svg>
+                <p>Semua proses enkripsi berjalan lokal — isi folder tidak pernah dikirim ke server manapun.</p>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- DECRYPT -->
+        <div class="view" id="view-decrypt">
+          <div class="split">
+            <div>
+              <div class="panel">
+                <div class="panel-head">
+                  <h3>Decrypt</h3>
+                  <button class="btn-utility" onclick="openManualDecrypt()"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2Z"/></svg>Decrypt File Lain…</button>
+                </div>
+                <div class="panel-body" style="padding:12px 16px 0;">
+                  <div class="segmented" id="decryptFilter">
+                    <input type="radio" name="dfilter" id="df1" checked><label for="df1">Semua</label>
+                    <input type="radio" name="dfilter" id="df2"><label for="df2">Milik Saya</label>
+                    <input type="radio" name="dfilter" id="df3"><label for="df3">Dari Koneksi</label>
+                  </div>
+                </div>
+                <div class="panel-body" style="padding:12px 0 0;">
+                  <table>
+                    <thead><tr><th>File</th><th>Sumber</th><th>Algoritma</th><th>Diperbarui</th><th></th></tr></thead>
+                    <tbody>
+                      <tr>
+                        <td><div class="kv-name"><div class="kv-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8Z"/><path d="M14 2v6h6"/></svg></div>reports-vault-01.fcvault</div></td>
+                        <td><span class="status-pill opened" style="background:transparent;border:1px solid var(--border);color:var(--text-secondary);">Milik Anda</span></td>
+                        <td class="mono">AES-256-GCM</td>
+                        <td>2j lalu</td>
+                        <td><button class="btn-utility" onclick="openManualDecrypt('reports-vault-01.fcvault')">Decrypt ke Lokal</button></td>
+                      </tr>
+                      <tr>
+                        <td><div class="kv-name"><div class="kv-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8Z"/><path d="M14 2v6h6"/></svg></div>backup-agustus.fcvault</div></td>
+                        <td><span class="status-pill opened" style="background:transparent;border:1px solid var(--border);color:var(--text-secondary);">Milik Anda</span></td>
+                        <td class="mono">XChaCha20-Poly1305</td>
+                        <td>Kemarin</td>
+                        <td><button class="btn-utility" onclick="openManualDecrypt('backup-agustus.fcvault')">Decrypt ke Lokal</button></td>
+                      </tr>
+                      <tr>
+                        <td><div class="kv-name"><div class="kv-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8Z"/><path d="M14 2v6h6"/></svg></div>proposal-client.fcvault</div></td>
+                        <td><div class="sender-cell"><div class="sender-avatar">R</div>rangga</div></td>
+                        <td class="mono">AES-256-GCM</td>
+                        <td>1j lalu</td>
+                        <td><button class="btn-utility" onclick="openViewer('proposal-client.fcvault')">Buka <span class="status-pill locked" style="margin-left:4px;">Terkunci</span></button></td>
+                      </tr>
+                      <tr>
+                        <td><div class="kv-name"><div class="kv-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8Z"/><path d="M14 2v6h6"/></svg></div>slip-gaji-juli.fcvault</div></td>
+                        <td><div class="sender-cell"><div class="sender-avatar">TF</div>tim.finance</div></td>
+                        <td class="mono">AES-256-GCM</td>
+                        <td>Kemarin</td>
+                        <td><button class="btn-utility" onclick="openViewer('slip-gaji-juli.fcvault')">Buka <span class="status-pill opened" style="margin-left:4px;">Sudah dibuka</span></button></td>
+                      </tr>
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            </div>
+
+            <div>
+              <div class="note-card">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="10" width="16" height="10" rx="2"/><path d="M8 10V7a4 4 0 0 1 8 0v3"/></svg>
+                <p><strong style="color:var(--text-primary);">Milik Anda</strong> — file yang Anda enkripsi sendiri, bisa didekrip penuh kembali ke bentuk asli di lokal.</p>
+              </div>
+              <div class="note-card" style="margin-top:10px;">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+                <p><strong style="color:var(--text-primary);">Dari Koneksi</strong> — dikirim oleh orang lain, hanya bisa dibuka lewat Faycryptor (view-only), tidak bisa diekspor ke file mentah.</p>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- MANUAL DECRYPT MODAL -->
+        <div class="viewer-overlay" id="manualDecryptOverlay">
+          <div class="viewer-modal" style="text-align:left;">
+            <div class="viewer-head">
+              <h3>Decrypt File / Folder</h3>
+              <button class="viewer-close" onclick="closeManualDecrypt()"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18M6 6l12 12"/></svg></button>
+            </div>
+            <div class="panel-body">
+              <div class="field">
+                <label class="field-label">File atau folder terenkripsi</label>
+                <div class="path-row">
+                  <div class="path-input mono" id="manualDecryptPath">C:\Users\daffa\Documents\reports.fcvault</div>
+                  <button class="btn-utility"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2Z"/></svg>Browse</button>
+                </div>
+              </div>
+              <div class="field">
+                <label class="field-label">Kata sandi</label>
+                <div class="input-group">
+                  <input type="password" class="text-input" placeholder="Masukkan kata sandi">
+                  <button class="input-icon-btn"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-7 11-7 11 7 11 7-4 7-11 7-11-7-11-7Z"/><circle cx="12" cy="12" r="3"/></svg></button>
+                </div>
+                <div class="field-hint">Hanya berfungsi untuk file yang Anda enkripsi sendiri.</div>
+              </div>
+              <div class="toggle-row">
+                <div class="toggle-text"><strong>Ambil kunci dari Web Vault</strong><span>Isi kata sandi otomatis jika kunci sudah tersimpan</span></div>
+                <div class="switch"><input type="checkbox" id="fetchToggle" checked><label for="fetchToggle"></label></div>
+              </div>
+            </div>
+            <div class="viewer-foot">
+              <span class="field-hint">Proses berjalan sepenuhnya lokal</span>
+              <button class="btn-primary">Decrypt</button>
+            </div>
+          </div>
+        </div>
+
+        <!-- ORGANISASI (informasi struktural, BUKAN daftar koneksi personal) -->
+        <div class="view view-org-chart" id="view-org">
+          <div class="org-search-row">
+            <div class="cmdk-trigger" style="margin:0;flex:1;">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/></svg>
+              <input type="text" placeholder="Cari anggota organisasi…" style="background:transparent;border:none;outline:none;color:var(--text-primary);font-size:12.5px;width:100%;">
+            </div>
+          </div>
+
+          <div class="org-layout">
+            <!-- DEPARTMENT TREE -->
+            <div class="org-tree panel">
+              <div class="tree-node root" data-dept="all" onclick="selectDept('all', 'Semua Anggota', this)">
+                <svg class="tree-caret" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg>
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 21h18"/><path d="M5 21V7l7-4 7 4v14"/></svg>
+                <span>PT Fayata Digital Nusantara</span>
+                <span class="tree-count">9</span>
+              </div>
+              <div class="tree-children">
+                <div class="tree-node active" data-dept="product" onclick="selectDept('product', 'Product', this)">
+                  <span class="tree-dot"></span><span>Product</span><span class="tree-count">4</span>
+                </div>
+                <div class="tree-node" data-dept="finance" onclick="selectDept('finance', 'Finance', this)">
+                  <span class="tree-dot"></span><span>Finance</span><span class="tree-count">3</span>
+                </div>
+                <div class="tree-node" data-dept="security" onclick="selectDept('security', 'IT Security', this)">
+                  <span class="tree-dot"></span><span>IT Security</span><span class="tree-count">2</span>
+                </div>
+              </div>
+            </div>
+
+            <!-- MEMBER DIRECTORY -->
+            <div class="org-members panel">
+              <div class="panel-head">
+                <h3 id="deptBreadcrumb">Product</h3>
+                <span class="field-hint" style="margin:0;" id="deptCount">4 anggota</span>
+              </div>
+              <div class="member-grid" id="memberGrid">
+                <div class="member-card" data-dept="product">
+                  <div class="member-avatar">R</div>
+                  <div class="member-info"><strong>rangga</strong><span>Product Manager</span></div>
+                  <button class="btn-utility" onclick="event.stopPropagation(); openSend('rangga')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 2 11 13"/><path d="M22 2 15 22l-4-9-9-4Z"/></svg>Kirim File</button>
+                </div>
+                <div class="member-card" data-dept="product">
+                  <div class="member-avatar">SN</div>
+                  <div class="member-info"><strong>sinta.n</strong><span>Product Designer</span></div>
+                  <button class="btn-utility" onclick="event.stopPropagation(); openSend('sinta.n')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 2 11 13"/><path d="M22 2 15 22l-4-9-9-4Z"/></svg>Kirim File</button>
+                </div>
+                <div class="member-card" data-dept="product">
+                  <div class="member-avatar">AW</div>
+                  <div class="member-info"><strong>agus.w</strong><span>Backend Engineer</span></div>
+                  <button class="btn-utility" onclick="event.stopPropagation(); openSend('agus.w')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 2 11 13"/><path d="M22 2 15 22l-4-9-9-4Z"/></svg>Kirim File</button>
+                </div>
+                <div class="member-card" data-dept="product">
+                  <div class="member-avatar">D</div>
+                  <div class="member-info"><strong>daffa (Anda)</strong><span>Security Engineer</span></div>
+                </div>
+                <div class="member-card" data-dept="finance" style="display:none;">
+                  <div class="member-avatar">TF</div>
+                  <div class="member-info"><strong>tim.finance</strong><span>Finance Lead</span></div>
+                  <button class="btn-utility" onclick="event.stopPropagation(); openSend('tim.finance')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 2 11 13"/><path d="M22 2 15 22l-4-9-9-4Z"/></svg>Kirim File</button>
+                </div>
+                <div class="member-card" data-dept="finance" style="display:none;">
+                  <div class="member-avatar">HN</div>
+                  <div class="member-info"><strong>hana.n</strong><span>Finance Staff</span></div>
+                  <button class="btn-utility" onclick="event.stopPropagation(); openSend('hana.n')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 2 11 13"/><path d="M22 2 15 22l-4-9-9-4Z"/></svg>Kirim File</button>
+                </div>
+                <div class="member-card" data-dept="finance" style="display:none;">
+                  <div class="member-avatar">BP</div>
+                  <div class="member-info"><strong>bagus.p</strong><span>Finance Staff</span></div>
+                  <button class="btn-utility" onclick="event.stopPropagation(); openSend('bagus.p')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 2 11 13"/><path d="M22 2 15 22l-4-9-9-4Z"/></svg>Kirim File</button>
+                </div>
+                <div class="member-card" data-dept="security" style="display:none;">
+                  <div class="member-avatar">MI</div>
+                  <div class="member-info"><strong>mira</strong><span>Security Analyst</span></div>
+                  <button class="btn-utility" onclick="event.stopPropagation(); openSend('mira')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 2 11 13"/><path d="M22 2 15 22l-4-9-9-4Z"/></svg>Kirim File</button>
+                </div>
+                <div class="member-card" data-dept="security" style="display:none;">
+                  <div class="member-avatar">RK</div>
+                  <div class="member-info"><strong>reza.k</strong><span>Security Analyst</span></div>
+                  <button class="btn-utility" onclick="event.stopPropagation(); openSend('reza.k')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 2 11 13"/><path d="M22 2 15 22l-4-9-9-4Z"/></svg>Kirim File</button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- KONEKSI (daftar personal untuk kirim file) -->
+        <div class="view" id="view-connections">
+          <div class="split">
+            <div>
+              <div class="panel">
+                <div class="panel-head">
+                  <h3>Koneksi Saya</h3>
+                  <button class="btn-utility"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="8.5" cy="7" r="4"/><path d="M20 8v6M23 11h-6"/></svg>Tambah Koneksi</button>
+                </div>
+                <div class="panel-body" style="padding:0;">
+                  <table>
+                    <thead><tr><th>Koneksi</th><th>Departemen</th><th>Terhubung sejak</th><th></th></tr></thead>
+                    <tbody>
+                      <tr>
+                        <td><div class="sender-cell"><div class="sender-avatar">R</div>rangga</div></td>
+                        <td>Product</td>
+                        <td>12 Jul 2026</td>
+                        <td><button class="btn-utility" onclick="openSend('rangga')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 2 11 13"/><path d="M22 2 15 22l-4-9-9-4Z"/></svg>Kirim File</button></td>
+                      </tr>
+                      <tr>
+                        <td><div class="sender-cell"><div class="sender-avatar">TF</div>tim.finance</div></td>
+                        <td>Finance</td>
+                        <td>03 Jul 2026</td>
+                        <td><button class="btn-utility" onclick="openSend('tim.finance')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 2 11 13"/><path d="M22 2 15 22l-4-9-9-4Z"/></svg>Kirim File</button></td>
+                      </tr>
+                      <tr>
+                        <td><div class="sender-cell"><div class="sender-avatar">MI</div>mira</div></td>
+                        <td>IT Security</td>
+                        <td>28 Jun 2026</td>
+                        <td><button class="btn-utility" onclick="openSend('mira')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 2 11 13"/><path d="M22 2 15 22l-4-9-9-4Z"/></svg>Kirim File</button></td>
+                      </tr>
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            </div>
+
+            <div>
+              <div class="panel">
+                <div class="panel-head"><h3>Permintaan Koneksi</h3></div>
+                <div class="panel-body" style="padding:8px 10px;">
+                  <div class="log-feed">
+                    <div class="log-row" style="border:none;padding:8px 6px;">
+                      <div class="sender-avatar" style="margin-right:2px;">BP</div>
+                      <span style="flex:1;">bagus.p</span>
+                      <button class="btn-utility" style="padding:3px 9px;font-size:11px;">Terima</button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+              <div class="note-card">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+                <p>Koneksi bisa berasal dari organisasi manapun — bukan cuma satu workspace. Hanya koneksi yang sudah diterima yang bisa dikirimi file.</p>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- SYNC -->
+        <div class="view" id="view-sync">
+          <div class="view-narrow">
+            <div class="panel">
+              <div class="status-panel">
+                <div class="status-left">
+                  <div class="status-dot-lg"></div>
+                  <div><h3>Connected to Web Vault</h3><p>localhost:8080 · daffa</p></div>
+                </div>
+                <button class="btn-secondary">Disconnect</button>
+              </div>
+            </div>
+            <div class="panel">
+              <div class="panel-body">
+                <div class="field"><label class="field-label">Vault server URL</label><input type="text" class="text-input mono" value="http://localhost:8080"></div>
+                <div class="field">
+                  <label class="field-label">Access token</label>
+                  <div class="input-group">
+                    <input type="password" class="text-input mono" value="fcv_live_a1b2c3d4e5">
+                    <button class="input-icon-btn"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-7 11-7 11 7 11 7-4 7-11 7-11-7-11-7Z"/><circle cx="12" cy="12" r="3"/></svg></button>
+                  </div>
+                </div>
+                <div class="toggle-row"><div class="toggle-text"><strong>Auto-sync</strong><span>Sinkron otomatis setiap proses selesai</span></div><div class="switch"><input type="checkbox" id="autoSync" checked><label for="autoSync"></label></div></div>
+                <div class="actions-row"><button class="btn-primary">Save Changes</button></div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- KEYS -->
+        <div class="view" id="view-keys">
+          <div class="panel kv-table-wrap">
+            <div class="panel-body">
+              <table>
+                <thead><tr><th>Key</th><th>Algorithm</th><th>Target</th><th>Updated</th></tr></thead>
+                <tbody>
+                  <tr><td><div class="kv-name"><div class="kv-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="7.5" cy="15.5" r="5.5"/><path d="M21 2l-9.6 9.6"/></svg></div>reports-vault-01</div></td><td class="mono">AES-256-GCM</td><td class="mono">C:\...\reports</td><td>2h ago</td></tr>
+                  <tr><td><div class="kv-name"><div class="kv-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="7.5" cy="15.5" r="5.5"/><path d="M21 2l-9.6 9.6"/></svg></div>backup-agustus</div></td><td class="mono">XChaCha20-Poly1305</td><td class="mono">D:\...\backup_aug</td><td>Yesterday</td></tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+
+        <!-- SETTINGS -->
+        <div class="view" id="view-settings">
+          <div class="view-narrow">
+            <div class="panel">
+              <div class="panel-head"><h3>Appearance</h3></div>
+              <div class="panel-body">
+                <div class="field">
+                  <div class="segmented">
+                    <input type="radio" name="theme" id="themeLight"><label for="themeLight">Light</label>
+                    <input type="radio" name="theme" id="themeDark" checked><label for="themeDark">Dark</label>
+                    <input type="radio" name="theme" id="themeSystem"><label for="themeSystem">System</label>
+                  </div>
+                </div>
+                <div class="toggle-row"><div class="toggle-text"><strong>Desktop notifications</strong><span>Alert when a process finishes</span></div><div class="switch"><input type="checkbox" id="notifToggle" checked><label for="notifToggle"></label></div></div>
+                <div class="toggle-row"><div class="toggle-text"><strong>Launch on startup</strong><span>Open automatically with Windows</span></div><div class="switch"><input type="checkbox" id="startupToggle"><label for="startupToggle"></label></div></div>
+              </div>
+            </div>
+            <div class="panel">
+              <div class="panel-head"><h3>Account</h3></div>
+              <div class="panel-body">
+                <div class="status-panel" style="padding:0;">
+                  <div class="status-left">
+                    <div class="avatar" style="width:30px;height:30px;">D</div>
+                    <div><h3>daffa</h3><p>localhost:8080</p></div>
+                  </div>
+                  <button class="btn-secondary">Sign out</button>
+                </div>
+              </div>
+            </div>
+            <div class="field-hint mono" style="margin-top:4px;">Faycryptor v2.1.0</div>
+          </div>
+        </div>
+
+        <!-- ABOUT -->
+        <div class="view" id="view-about">
+          <div class="view-narrow">
+            <div class="panel">
+              <div class="panel-body">
+                <div class="about-header">
+                  <div class="about-mark"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2 4 5v6c0 5 3.5 9 8 11 4.5-2 8-6 8-11V5l-8-3Z"/></svg></div>
+                  <div><h2>Faycryptor</h2><span>v2.1.0</span></div>
+                </div>
+                <p class="about-desc">Local file encryption tool dengan fitur berbagi akses dekripsi. Semua proses kriptografi berjalan on-device — file yang dibagikan hanya bisa dibuka lewat aplikasi ini.</p>
+                <div class="field"><label class="field-label">Algorithms</label><span class="mono" style="font-size:12px;color:var(--text-secondary);">AES-256-GCM · AES-256-CBC · XChaCha20-Poly1305 · 3DES</span></div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- CREATE ORGANIZATION MODAL -->
+<div class="viewer-overlay" id="createOrgOverlay">
+  <div class="viewer-modal" style="text-align:left;width:560px;">
+    <div class="viewer-head">
+      <h3 style="font-family:'Inter',sans-serif;">Buat Organisasi Baru</h3>
+      <button class="viewer-close" onclick="closeCreateOrg()"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18M6 6l12 12"/></svg></button>
+    </div>
+    <div class="panel-body" style="max-height:60vh;overflow-y:auto;">
+      <div class="field">
+        <label class="field-label">Nama organisasi</label>
+        <input type="text" class="text-input" placeholder="cth. Studio Kreatif Bersama">
+      </div>
+
+      <div class="field">
+        <label class="field-label">Undang Anggota</label>
+        <div class="segmented" id="inviteTabs">
+          <input type="radio" name="inviteMethod" id="im1" checked><label for="im1" onclick="showInviteTab('link')">Kirim Link</label>
+          <input type="radio" name="inviteMethod" id="im2"><label for="im2" onclick="showInviteTab('search')">Cari Nama</label>
+          <input type="radio" name="inviteMethod" id="im3"><label for="im3" onclick="showInviteTab('conn')">Dari Koneksi</label>
+        </div>
+
+        <!-- Tab: Kirim Link -->
+        <div class="invite-tab-panel" id="tab-link">
+          <div class="path-row" style="margin-top:10px;">
+            <div class="path-input mono">https://faycryptor.app/invite/FCV-8X2K-91QZ</div>
+            <button class="btn-utility"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>Salin</button>
+          </div>
+          <div class="field-hint">Siapa pun dengan link ini bisa minta bergabung — Anda tetap perlu menyetujui dari notifikasi.</div>
+        </div>
+
+        <!-- Tab: Cari Nama -->
+        <div class="invite-tab-panel" id="tab-search" style="display:none;">
+          <input type="text" class="text-input" placeholder="Cari username atau email…" style="margin-top:10px;">
+          <div class="log-feed" style="border:1px solid var(--border); border-radius:8px; margin-top:8px;">
+            <div class="log-row" style="border-bottom:1px solid var(--border);">
+              <div class="sender-avatar">WK</div><span style="flex:1;">wulan.k</span>
+              <button class="btn-utility" style="padding:4px 10px;font-size:11px;" onclick="addInvitee('wulan.k')">+ Undang</button>
+            </div>
+            <div class="log-row">
+              <div class="sender-avatar">FA</div><span style="flex:1;">fajar.a</span>
+              <button class="btn-utility" style="padding:4px 10px;font-size:11px;" onclick="addInvitee('fajar.a')">+ Undang</button>
+            </div>
+          </div>
+        </div>
+
+        <!-- Tab: Dari Koneksi -->
+        <div class="invite-tab-panel" id="tab-conn" style="display:none;">
+          <div class="log-feed" style="border:1px solid var(--border); border-radius:8px; margin-top:10px;">
+            <div class="log-row" style="border-bottom:1px solid var(--border);">
+              <div class="sender-avatar">R</div><span style="flex:1;">rangga</span>
+              <button class="btn-utility" style="padding:4px 10px;font-size:11px;" onclick="addInvitee('rangga')">+ Undang</button>
+            </div>
+            <div class="log-row" style="border-bottom:1px solid var(--border);">
+              <div class="sender-avatar">TF</div><span style="flex:1;">tim.finance</span>
+              <button class="btn-utility" style="padding:4px 10px;font-size:11px;" onclick="addInvitee('tim.finance')">+ Undang</button>
+            </div>
+            <div class="log-row">
+              <div class="sender-avatar">MI</div><span style="flex:1;">mira</span>
+              <button class="btn-utility" style="padding:4px 10px;font-size:11px;" onclick="addInvitee('mira')">+ Undang</button>
+            </div>
+          </div>
+        </div>
+
+        <div class="recipient-tags" id="inviteeTags"></div>
+      </div>
+    </div>
+    <div class="viewer-foot">
+      <span class="field-hint" id="inviteeCount">Belum ada anggota diundang</span>
+      <button class="btn-primary">Buat Organisasi</button>
+    </div>
+  </div>
+</div>
+
+<!-- JOIN ORGANIZATION MODAL -->
+<div class="viewer-overlay" id="joinOrgOverlay">
+  <div class="viewer-modal" style="text-align:left;">
+    <div class="viewer-head">
+      <h3 style="font-family:'Inter',sans-serif;">Gabung Organisasi</h3>
+      <button class="viewer-close" onclick="closeJoinOrg()"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18M6 6l12 12"/></svg></button>
+    </div>
+    <div class="panel-body">
+      <div class="field" style="margin-bottom:0;">
+        <label class="field-label">Kode undangan</label>
+        <input type="text" class="text-input mono" placeholder="cth. FCV-8X2K-91QZ">
+        <div class="field-hint">Minta kode ini dari admin organisasi, atau terima lewat notifikasi undangan.</div>
+      </div>
+    </div>
+    <div class="viewer-foot">
+      <span class="field-hint"></span>
+      <button class="btn-primary">Gabung</button>
+    </div>
+  </div>
+</div>
+
+<!-- SEND FILE MODAL (per-member, from Organisasi/Koneksi) -->
+<div class="viewer-overlay" id="sendOverlay">
+  <div class="viewer-modal" style="text-align:left;width:520px;">
+    <div class="viewer-head">
+      <h3>Kirim file ke <span id="sendTarget" class="mono">rangga</span></h3>
+      <button class="viewer-close" onclick="closeSend()"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18M6 6l12 12"/></svg></button>
+    </div>
+    <div class="panel-body" style="max-height:62vh;overflow-y:auto;">
+      <div class="field">
+        <label class="field-label">Pilih file yang sudah dienkripsi</label>
+        <div class="send-file-list" id="sendFileList">
+          <label class="send-file-row">
+            <input type="radio" name="sendFile" checked>
+            <div class="kv-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8Z"/><path d="M14 2v6h6"/></svg></div>
+            <div class="send-file-text"><strong>reports-vault-01.fcvault</strong><span>AES-256-GCM · selesai 2j lalu</span></div>
+          </label>
+          <label class="send-file-row">
+            <input type="radio" name="sendFile">
+            <div class="kv-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8Z"/><path d="M14 2v6h6"/></svg></div>
+            <div class="send-file-text"><strong>backup-agustus.fcvault</strong><span>XChaCha20-Poly1305 · selesai kemarin</span></div>
+          </label>
+        </div>
+        <div class="field-hint">Hanya menampilkan file yang sudah selesai diproses dari menu Encrypt milik Anda sendiri.</div>
+      </div>
+
+      <div class="field">
+        <label class="field-label">Aturan akses</label>
+        <label class="rule-option">
+          <input type="radio" name="accessRule" id="rule1" checked onclick="showShareLimit(false)">
+          <div class="rule-text"><strong>Lihat saja, tidak bisa dibagikan lagi</strong><span>Penerima cuma bisa buka lewat Faycryptor, tidak ada opsi share ulang ataupun ekspor</span></div>
+        </label>
+        <label class="rule-option">
+          <input type="radio" name="accessRule" id="rule2" onclick="showShareLimit(true)">
+          <div class="rule-text"><strong>Lihat saja, dengan batas share</strong><span>Penerima boleh meneruskan ke sejumlah orang tertentu, lalu terkunci</span></div>
+        </label>
+        <div class="share-limit-row" id="shareLimitRow" style="display:none;">
+          <label class="field-label" style="margin:0 10px 0 0;">Batas share</label>
+          <input type="number" class="text-input mono" value="2" min="1" max="10" style="width:70px;padding:6px 8px;">
+          <span class="field-hint" style="margin:0;">orang</span>
+        </div>
+        <label class="rule-option">
+          <input type="radio" name="accessRule" id="rule3" onclick="showShareLimit(false)">
+          <div class="rule-text"><strong>Decrypt bebas ke lokal</strong><span>Penerima bisa mendekrip penuh dan menyimpan salinan asli di perangkatnya</span></div>
+        </label>
+      </div>
+
+      <div class="note-card">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2 4 5v6c0 5 3.5 9 8 11 4.5-2 8-6 8-11V5l-8-3Z"/></svg>
+        <p>Signature file tetap tercatat: <strong style="color:var(--text-primary);">dienkripsi oleh daffa</strong> — melekat pada file di tingkat akses manapun, tidak bisa dihapus penerima.</p>
+      </div>
+    </div>
+    <div class="viewer-foot">
+      <span class="field-hint">Akses bisa dicabut kapan saja dari Decrypt</span>
+      <button class="btn-primary">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 2 11 13"/><path d="M22 2 15 22l-4-9-9-4Z"/></svg>
+        Kirim & Terapkan Aturan
+      </button>
+    </div>
+  </div>
+</div>
+
+<!-- VIEW-ONLY DECRYPT VIEWER -->
+<div class="viewer-overlay" id="viewerOverlay">
+  <div class="viewer-modal">
+    <div class="viewer-head">
+      <h3 id="viewerTitle">file.fcvault</h3>
+      <button class="viewer-close" onclick="closeViewer()"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18M6 6l12 12"/></svg></button>
+    </div>
+    <div class="viewer-body">
+      <div class="viewer-watermark">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-7 11-7 11 7 11 7-4 7-11 7-11-7-11-7Z"/><circle cx="12" cy="12" r="3"/></svg>
+        Tampilan saja — tidak dapat diekspor
+      </div>
+      <div class="viewer-preview">Isi dokumen ditampilkan di sini setelah didekripsi sementara di memori. Tidak ada file mentah yang ditulis ke disk.</div>
+      <div class="field-hint mono" id="viewerSignature" style="margin-top:10px;">Dienkripsi oleh: rangga</div>
+    </div>
+    <div class="viewer-foot">
+      <span class="field-hint">Akses diberikan oleh pengirim · Faycryptor Desktop</span>
+      <button class="btn-secondary" disabled style="opacity:0.4;cursor:not-allowed;">Simpan Salinan</button>
+    </div>
+  </div>
+</div>
+
+<script>
+  const views = {
+    home:'Home', encrypt:'Encrypt', decrypt:'Decrypt',
+    org:'Organisasi', connections:'Koneksi Saya',
+    sync:'Link Web Account', keys:'View Keys', settings:'Settings', about:'About'
+  };
+  const crumb = document.getElementById('crumb');
+
+  function goTo(key){
+    document.querySelectorAll('.nav-item').forEach(b => b.classList.toggle('active', b.dataset.view === key));
+    document.querySelectorAll('.view').forEach(v => v.classList.remove('active'));
+    document.getElementById('view-' + key).classList.add('active');
+    crumb.textContent = views[key];
+  }
+  document.querySelectorAll('[data-view]').forEach(el => el.addEventListener('click', () => goTo(el.dataset.view)));
+
+  function toggleWsMenu(e){
+    e.stopPropagation();
+    document.getElementById('notifMenu').classList.remove('open');
+    document.getElementById('wsMenu').classList.toggle('open');
+  }
+  function toggleNotif(e){
+    e.stopPropagation();
+    document.getElementById('wsMenu').classList.remove('open');
+    document.getElementById('notifMenu').classList.toggle('open');
+  }
+  document.addEventListener('click', () => {
+    document.getElementById('wsMenu').classList.remove('open');
+    document.getElementById('notifMenu').classList.remove('open');
+  });
+
+  function showInviteTab(tab){
+    document.querySelectorAll('.invite-tab-panel').forEach(p => p.style.display = 'none');
+    document.getElementById('tab-' + tab).style.display = 'block';
+  }
+
+  const invitees = new Set();
+  function addInvitee(name){
+    invitees.add(name);
+    renderInvitees();
+  }
+  function removeInvitee(name){
+    invitees.delete(name);
+    renderInvitees();
+  }
+  function renderInvitees(){
+    const wrap = document.getElementById('inviteeTags');
+    wrap.innerHTML = '';
+    invitees.forEach(name => {
+      const tag = document.createElement('div');
+      tag.className = 'recipient-tag';
+      tag.innerHTML = `<span class="rt-avatar">${name.slice(0,2).toUpperCase()}</span>${name}<button onclick="removeInvitee('${name}')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M18 6 6 18M6 6l12 12"/></svg></button>`;
+      wrap.appendChild(tag);
+    });
+    document.getElementById('inviteeCount').textContent = invitees.size === 0
+      ? 'Belum ada anggota diundang'
+      : invitees.size + ' anggota akan diundang';
+  }
+
+  function openCreateOrg(){ document.getElementById('wsMenu').classList.remove('open'); document.getElementById('createOrgOverlay').classList.add('open'); }
+  function closeCreateOrg(){ document.getElementById('createOrgOverlay').classList.remove('open'); }
+  function openJoinOrg(){ document.getElementById('wsMenu').classList.remove('open'); document.getElementById('joinOrgOverlay').classList.add('open'); }
+  function closeJoinOrg(){ document.getElementById('joinOrgOverlay').classList.remove('open'); }
+
+  function selectDept(dept, label, el){
+    document.querySelectorAll('.tree-node').forEach(n => n.classList.remove('active'));
+    if(el) el.classList.add('active');
+    document.getElementById('deptBreadcrumb').textContent = label;
+    const cards = document.querySelectorAll('.member-card');
+    let count = 0;
+    cards.forEach(c => {
+      const show = dept === 'all' || c.dataset.dept === dept;
+      c.style.display = show ? 'flex' : 'none';
+      if(show) count++;
+    });
+    document.getElementById('deptCount').textContent = count + ' anggota';
+  }
+
+  function showShareLimit(show){
+    document.getElementById('shareLimitRow').style.display = show ? 'flex' : 'none';
+  }
+
+  function openSend(username){
+    document.getElementById('sendTarget').textContent = username;
+    document.getElementById('sendOverlay').classList.add('open');
+  }
+  function closeSend(){ document.getElementById('sendOverlay').classList.remove('open'); }
+
+  function openManualDecrypt(name){
+    if(name) document.getElementById('manualDecryptPath').textContent = name;
+    document.getElementById('manualDecryptOverlay').classList.add('open');
+  }
+  function closeManualDecrypt(){ document.getElementById('manualDecryptOverlay').classList.remove('open'); }
+
+  function openViewer(name){
+    document.getElementById('viewerTitle').textContent = name;
+    document.getElementById('viewerOverlay').classList.add('open');
+  }
+  function closeViewer(){ document.getElementById('viewerOverlay').classList.remove('open'); }
+
+  const root = document.documentElement;
+  document.getElementById('themeLight').addEventListener('change', () => root.setAttribute('data-theme','light'));
+  document.getElementById('themeDark').addEventListener('change', () => root.setAttribute('data-theme','dark'));
+  document.getElementById('themeSystem').addEventListener('change', () => root.setAttribute('data-theme', window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark':'light'));
+</script>
+
+</body>
+</html>
