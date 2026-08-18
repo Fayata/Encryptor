@@ -51,17 +51,21 @@ type fayKeySchedule struct {
 	diffusion [fayBlockSize]byte   // Diffusion constants
 }
 
-// expandKey performs key expansion to generate all cipher parameters from the master key.
+// expandKey performs key expansion to generate all cipher parameters.
+// It uses HMAC for domain separation to ensure the DAG keys and AES keys are mathematically independent.
 func expandKey(masterKey []byte) *fayKeySchedule {
 	ks := &fayKeySchedule{}
 
 	// ═══════════════════════════════════════════
-	// Phase 1: Sub-key derivation via cascaded hashing
+	// Phase 1: Sub-key derivation via cascaded hashing with Domain Separation
 	// ═══════════════════════════════════════════
-	// Each sub-key is derived from the previous one + master key + round constant
-	// This creates a chain of keys that are all dependent on the master key
+	
+	// Derive an independent root key for the DAG layer to prevent related-key attacks with AES
+	hDag := hmac.New(sha256.New, []byte("faycipher-dag-domain"))
+	hDag.Write(masterKey)
+	dagRootKey := hDag.Sum(nil)
 
-	current := sha256.Sum256(masterKey)
+	current := sha256.Sum256(dagRootKey)
 	for i := 0; i < faySubKeys; i++ {
 		// Mix in the round number and master key
 		roundData := make([]byte, len(masterKey)+32+8)
@@ -460,9 +464,12 @@ func (f *FayCipher) Encrypt(plaintext, key []byte) ([]byte, error) {
 	binary.LittleEndian.PutUint32(blockCountBytes, uint32(numBlocks))
 
 	// Final layer: AES-256-GCM for authenticated encryption
-	// Use a derived key for AES (not the same as the master key)
-	aesKey := sha256.Sum256(append(key, ks.subKeys[15][:]...))
-	aesBlock, err := aes.NewCipher(aesKey[:])
+	// Use HMAC domain separation to ensure AES key is mathematically independent from DAG keys
+	hAes := hmac.New(sha256.New, []byte("faycipher-aes-domain"))
+	hAes.Write(key)
+	aesKey := hAes.Sum(nil)
+	
+	aesBlock, err := aes.NewCipher(aesKey)
 	if err != nil {
 		return nil, fmt.Errorf("faycipher: AES init failed: %w", err)
 	}
@@ -495,8 +502,11 @@ func (f *FayCipher) Decrypt(ciphertext, key []byte) ([]byte, error) {
 	// ═══════════════════════════════════════════
 	// Phase 2: Remove AES-256-GCM layer
 	// ═══════════════════════════════════════════
-	aesKey := sha256.Sum256(append(key, ks.subKeys[15][:]...))
-	aesBlock, err := aes.NewCipher(aesKey[:])
+	hAes := hmac.New(sha256.New, []byte("faycipher-aes-domain"))
+	hAes.Write(key)
+	aesKey := hAes.Sum(nil)
+	
+	aesBlock, err := aes.NewCipher(aesKey)
 	if err != nil {
 		return nil, fmt.Errorf("faycipher: AES init failed: %w", err)
 	}

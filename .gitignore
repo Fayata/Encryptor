@@ -15,3 +15,5 @@ test_folder/data.json
 test_folder/test1.txt
 test_folder/test2.txt
 test_folder/Web Attack.pptx
+encryptor_vault.db
+.env

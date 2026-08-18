@@ -161,7 +161,7 @@ func readHeader(file *os.File) (*FileHeader, error) {
 }
 
 // EncryptFile encrypts a single file and writes it as a .enc file.
-func EncryptFile(filePath string, enc crypto.Encryptor, key, salt []byte) error {
+func EncryptFile(filePath string, enc crypto.Encryptor, key, salt []byte, secureWipe bool) error {
 	// Read the original file
 	plaintext, err := os.ReadFile(filePath)
 	if err != nil {
@@ -206,8 +206,14 @@ func EncryptFile(filePath string, enc crypto.Encryptor, key, salt []byte) error 
 	}
 
 	// Remove the original file
-	if err := os.Remove(filePath); err != nil {
-		return fmt.Errorf("encrypted file created, but failed to remove original: %w", err)
+	if secureWipe {
+		if err := SecureRemove(filePath); err != nil {
+			return fmt.Errorf("encrypted file created, but failed to securely remove original: %w", err)
+		}
+	} else {
+		if err := os.Remove(filePath); err != nil {
+			return fmt.Errorf("encrypted file created, but failed to remove original: %w", err)
+		}
 	}
 
 	// Lock the encrypted file (Read-Only) to prevent accidental modification
@@ -216,6 +222,38 @@ func EncryptFile(filePath string, enc crypto.Encryptor, key, salt []byte) error 
 	}
 
 	return nil
+}
+
+// SecureRemove overwrites the file with 0s before removing it.
+func SecureRemove(path string) error {
+	f, err := os.OpenFile(path, os.O_WRONLY, 0)
+	if err != nil {
+		return err
+	}
+	info, err := f.Stat()
+	if err != nil {
+		f.Close()
+		return err
+	}
+	size := info.Size()
+
+	zeros := make([]byte, 4096)
+	var written int64
+	for written < size {
+		n := int64(4096)
+		if size-written < n {
+			n = size - written
+		}
+		_, err := f.Write(zeros[:n])
+		if err != nil {
+			f.Close()
+			return err
+		}
+		written += n
+	}
+	f.Sync()
+	f.Close()
+	return os.Remove(path)
 }
 
 // DecryptFile decrypts a single .enc file and restores the original file.
@@ -295,7 +333,7 @@ func DecryptFile(filePath string, password string) error {
 
 // EncryptFolder encrypts all files in a folder recursively.
 // Returns the number of successful and failed operations.
-func EncryptFolder(folderPath string, enc crypto.Encryptor, password string, progressFn func(current, total int, fileName string)) (int, int, []error) {
+func EncryptFolder(folderPath string, enc crypto.Encryptor, password string, progressFn func(current, total int, fileName string), secureWipe bool) (int, int, []error) {
 	files, err := ScanFolder(folderPath)
 	if err != nil {
 		return 0, 0, []error{err}
@@ -326,7 +364,7 @@ func EncryptFolder(folderPath string, enc crypto.Encryptor, password string, pro
 			progressFn(i+1, len(files), filepath.Base(filePath))
 		}
 
-		if err := EncryptFile(filePath, enc, key, salt); err != nil {
+		if err := EncryptFile(filePath, enc, key, salt, secureWipe); err != nil {
 			failed++
 			errors = append(errors, fmt.Errorf("%s: %w", filepath.Base(filePath), err))
 		} else {
@@ -369,4 +407,80 @@ func DecryptFolder(folderPath string, password string, progressFn func(current, 
 	}
 
 	return success, failed, errors
+}
+
+// EncryptFileToMemory encrypts a file and returns it as a byte slice with header.
+func EncryptFileToMemory(filePath string, enc crypto.Encryptor, key, salt []byte) ([]byte, error) {
+	plaintext, err := os.ReadFile(filePath)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read file: %w", err)
+	}
+
+	ciphertext, err := enc.Encrypt(plaintext, key)
+	if err != nil {
+		return nil, fmt.Errorf("failed to encrypt: %w", err)
+	}
+
+	originalName := filepath.Base(filePath)
+
+	header := &FileHeader{
+		Magic:       MagicBytes,
+		Version:     FormatVersion,
+		AlgorithmID: enc.AlgorithmID(),
+		FileNameLen: uint16(len(originalName)),
+		FileName:    originalName,
+	}
+	copy(header.Salt[:], salt)
+
+	var buf []byte
+	buf = append(buf, header.Magic[:]...)
+	buf = append(buf, header.Version)
+	buf = append(buf, header.AlgorithmID)
+	lenBytes := make([]byte, 2)
+	binary.LittleEndian.PutUint16(lenBytes, header.FileNameLen)
+	buf = append(buf, lenBytes...)
+	buf = append(buf, []byte(header.FileName)...)
+	buf = append(buf, header.Salt[:]...)
+
+	buf = append(buf, ciphertext...)
+	return buf, nil
+}
+
+// DecryptFileFromMemory parses the header and decrypts the ciphertext.
+func DecryptFileFromMemory(data []byte, key []byte, enc crypto.Encryptor) ([]byte, error) {
+	if len(data) < 4+1+1+2+16 {
+		return nil, fmt.Errorf("data too short")
+	}
+
+	var magic [4]byte
+	copy(magic[:], data[0:4])
+	if magic != MagicBytes {
+		return nil, fmt.Errorf("not a valid encrypted file (invalid magic bytes)")
+	}
+
+	version := data[4]
+	if version != FormatVersion {
+		return nil, fmt.Errorf("unsupported format version: %d", version)
+	}
+
+	algoID := data[5]
+	if enc.AlgorithmID() != algoID {
+		return nil, fmt.Errorf("mismatched algorithm ID")
+	}
+
+	fileNameLen := binary.LittleEndian.Uint16(data[6:8])
+	if len(data) < 8+int(fileNameLen)+16 {
+		return nil, fmt.Errorf("data too short for filename and salt")
+	}
+
+	offset := 8 + int(fileNameLen)
+	// skip salt
+	ciphertext := data[offset+16:]
+
+	plaintext, err := enc.Decrypt(ciphertext, key)
+	if err != nil {
+		return nil, err
+	}
+
+	return plaintext, nil
 }
