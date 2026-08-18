@@ -194,6 +194,7 @@ export default function FileView({ user, masterKey }) {
           setViewerFileName(filename)
           setModal(null) // tutup modal dekripsi
           setLoading(false)
+          fetchFiles() // refresh status
         }
         reader.readAsDataURL(blob)
 
@@ -407,7 +408,9 @@ export default function FileView({ user, masterKey }) {
           <div className="viewer-modal" style={{ width: '460px', height: 'auto', padding: '28px' }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '20px' }}>
               <Lock size={20} style={{ color: 'var(--accent)' }} />
-              <h3 style={{ margin: 0 }}>Masukkan Key untuk Dekripsi</h3>
+              <h3 style={{ margin: 0 }}>
+                {modal.file_path === 'db://vault' ? 'Buka File dari Vault' : 'Masukkan Key untuk Dekripsi'}
+              </h3>
             </div>
 
             <div style={{ background: 'var(--surface-2)', borderRadius: '8px', padding: '12px 16px', marginBottom: '20px' }}>
@@ -418,24 +421,30 @@ export default function FileView({ user, masterKey }) {
               </div>
             </div>
 
-            <div className="field">
-              <label className="field-label">Key / Password</label>
-              <div className="input-group">
-                <input
-                  type={showKey ? 'text' : 'password'}
-                  className="text-input"
-                  placeholder="Masukkan key yang diberikan author..."
-                  value={inputKey}
-                  onChange={e => setInputKey(e.target.value)}
-                  onKeyDown={e => e.key === 'Enter' && handleConfirmDecrypt()}
-                  autoFocus
-                />
-                <button className="input-icon-btn" onClick={() => setShowKey(!showKey)}>
-                  {showKey ? <EyeOff size={15} /> : <Eye size={15} />}
-                </button>
+            {modal.file_path !== 'db://vault' ? (
+              <div className="field">
+                <label className="field-label">Key / Password</label>
+                <div className="input-group">
+                  <input
+                    type={showKey ? 'text' : 'password'}
+                    className="text-input"
+                    placeholder="Masukkan key yang diberikan author..."
+                    value={inputKey}
+                    onChange={e => setInputKey(e.target.value)}
+                    onKeyDown={e => e.key === 'Enter' && handleConfirmDecrypt()}
+                    autoFocus
+                  />
+                  <button className="input-icon-btn" onClick={() => setShowKey(!showKey)}>
+                    {showKey ? <EyeOff size={15} /> : <Eye size={15} />}
+                  </button>
+                </div>
+                <div className="field-hint">Key ini diberikan oleh author yang mengenkripsi file.</div>
               </div>
-              <div className="field-hint">Key ini diberikan oleh author yang mengenkripsi file.</div>
-            </div>
+            ) : (
+              <div className="field-hint" style={{ marginBottom: '16px' }}>
+                File ini akan didekripsi secara aman menggunakan Master Key Anda.
+              </div>
+            )}
 
             {result && (
               <div style={{

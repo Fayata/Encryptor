@@ -46,16 +46,22 @@ ipcMain.on('window:toggle-maximize', () => {
 })
 ipcMain.on('window:close', () => mainWindow?.close())
 
+const allowedPaths = new Set()
+
 ipcMain.handle('dialog:openFile', async () => {
   const { dialog } = require('electron')
   const { canceled, filePaths } = await dialog.showOpenDialog(mainWindow, {
     properties: ['openFile']
   })
   if (canceled) return null
+  allowedPaths.add(filePaths[0])
   return filePaths[0]
 })
 
 ipcMain.handle('file:read', async (_, filePath) => {
+  if (!allowedPaths.has(filePath)) {
+    throw new Error('Akses ditolak: path harus dipilih melalui dialog resmi.')
+  }
   const fs = require('fs')
   try {
     const buf = fs.readFileSync(filePath)
@@ -63,10 +69,6 @@ ipcMain.handle('file:read', async (_, filePath) => {
   } catch (e) {
     throw new Error('Gagal membaca file: ' + e.message)
   }
-})
-
-ipcMain.handle('file:openSystem', async (_, filePath) => {
-  await shell.openPath(filePath)
 })
 
 ipcMain.handle('dialog:openDirectory', async () => {
@@ -77,6 +79,7 @@ ipcMain.handle('dialog:openDirectory', async () => {
   if (canceled) {
     return null
   } else {
+    allowedPaths.add(filePaths[0])
     return filePaths[0]
   }
 })

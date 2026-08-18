@@ -3,11 +3,9 @@ import { api } from '../lib/api'
 import { Eye, EyeOff } from 'lucide-react'
 
 const ALGORITHMS = [
-  { id: 'faycipher', label: 'FayCipher (DAG Multi-Layer)' },
   { id: 'aes-gcm', label: 'AES-256-GCM' },
   { id: 'aes-cbc', label: 'AES-256-CBC' },
   { id: 'chacha20', label: 'XChaCha20-Poly1305' },
-  { id: '3des', label: '3DES' },
 ]
 
 export default function EncryptView({ masterKey }) {

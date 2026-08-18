@@ -7,5 +7,4 @@ contextBridge.exposeInMainWorld('electronAPI', {
   selectFolder: () => ipcRenderer.invoke('dialog:openDirectory'),
   selectFile: () => ipcRenderer.invoke('dialog:openFile'),
   readFile: (filePath) => ipcRenderer.invoke('file:read', filePath),
-  openWithSystem: (filePath) => ipcRenderer.invoke('file:openSystem', filePath),
 })

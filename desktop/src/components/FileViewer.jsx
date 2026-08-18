@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react'
 import * as XLSX from 'xlsx'
 import mammoth from 'mammoth'
+import DOMPurify from 'dompurify'
 import { X, FileText, Table, Image, File, Loader, Shield } from 'lucide-react'
 
 // ── Detect file type ─────────────────────────────────────────────
@@ -155,7 +156,7 @@ function WordViewer({ b64 }) {
 
   useEffect(() => {
     mammoth.convertToHtml({ arrayBuffer: base64ToArrayBuffer(b64) })
-      .then(r => setHtml(r.value))
+      .then(r => setHtml(DOMPurify.sanitize(r.value)))
       .catch(e => setError(e.message))
   }, [b64])
 
