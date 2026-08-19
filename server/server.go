@@ -632,6 +632,7 @@ func (s *Server) handleVaultDownload(w http.ResponseWriter, r *http.Request) {
 	var req struct {
 		KeyID         int64  `json:"key_id"`
 		SharePassword string `json:"share_password"`
+		Password      string `json:"password"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		http.Error(w, "Invalid request payload", http.StatusBadRequest)
