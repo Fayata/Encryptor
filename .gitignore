@@ -17,3 +17,5 @@ test_folder/test2.txt
 test_folder/Web Attack.pptx
 encryptor_vault.db
 .env
+security.log
+encryptor_vault.db

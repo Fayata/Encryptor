@@ -18,12 +18,14 @@ export default function ShareModal({ recipientUsername, onClose }) {
       .catch(err => console.error(err))
   }, [])
 
+  const [shareResult, setShareResult] = useState(null)
+
   const handleShare = async () => {
     if (!selectedKey) return alert('Pilih file dari Vault')
     
     setLoading(true)
     try {
-      await api('/api/share', {
+      const res = await api('/api/share', {
         method: 'POST',
         body: JSON.stringify({
           key_id: parseInt(selectedKey),
@@ -32,8 +34,12 @@ export default function ShareModal({ recipientUsername, onClose }) {
           scope: 'personal' // simplified
         })
       })
-      alert(`File berhasil dikirim ke ${recipientUsername}`)
-      onClose()
+      if (res.share_password) {
+        setShareResult({ password: res.share_password, recipient: recipientUsername })
+      } else {
+        alert(`File berhasil dikirim ke ${recipientUsername}`)
+        onClose()
+      }
     } catch (err) {
       alert(`Gagal mengirim: ${err.message}`)
     } finally {
@@ -52,58 +58,78 @@ export default function ShareModal({ recipientUsername, onClose }) {
           Kirim File ke {recipientUsername}
         </div>
         <div className="panel-body">
-          
-          <div className="field">
-            <label className="field-label">Pilih File dari Cloud Vault</label>
-            <select 
-              className="text-input" 
-              value={selectedKey} 
-              onChange={e => setSelectedKey(e.target.value)}
-              style={{ width: '100%', padding: '8px' }}
-            >
-              <option value="">-- Pilih File --</option>
-              {keys.map(k => (
-                <option key={k.id} value={k.id}>{k.key_name}</option>
-              ))}
-            </select>
-            {keys.length === 0 && (
-              <div style={{ fontSize: '12px', color: 'var(--text-muted)', marginTop: '4px' }}>
-                Vault Anda kosong. Upload file ke Cloud Vault di menu Encrypt.
+          {shareResult ? (
+            <div style={{ textAlign: 'center', padding: '16px 0' }}>
+              <div style={{ fontSize: '18px', marginBottom: '16px', color: 'var(--success)' }}>Berhasil Dikirim!</div>
+              <p style={{ fontSize: '13px', color: 'var(--text-muted)' }}>
+                Berikan password berikut ini kepada <strong>{shareResult.recipient}</strong> melalui jalur aman. 
+                <br />Password ini <strong>tidak tersimpan di database</strong>, pastikan Anda menyalinnya sekarang.
+              </p>
+              <div style={{
+                background: 'var(--surface-2)', padding: '16px', borderRadius: '8px', 
+                fontSize: '24px', fontWeight: 'bold', letterSpacing: '2px', 
+                userSelect: 'all', margin: '20px 0', border: '1px dashed var(--accent)'
+              }}>
+                {shareResult.password}
               </div>
-            )}
-          </div>
-
-          <div className="field">
-            <label className="field-label">Share Rule (Batas Teruskan)</label>
-            <div className="segmented" style={{ flexWrap: 'wrap' }}>
-              <button 
-                className={maxForward === 0 ? 'active' : ''} 
-                onClick={() => setMaxForward(0)}
-              >
-                Hanya Penerima
-              </button>
-              <button 
-                className={maxForward === 1 ? 'active' : ''} 
-                onClick={() => setMaxForward(1)}
-              >
-                Boleh 1x Forward
-              </button>
-              <button 
-                className={maxForward === 2 ? 'active' : ''} 
-                onClick={() => setMaxForward(2)}
-              >
-                Boleh 2x Forward
+              <button className="btn-primary" style={{ width: '100%' }} onClick={onClose}>
+                Tutup
               </button>
             </div>
-          </div>
+          ) : (
+            <>
+              <div className="field">
+                <label className="field-label">Pilih File dari Cloud Vault</label>
+                <select 
+                  className="text-input" 
+                  value={selectedKey} 
+                  onChange={e => setSelectedKey(e.target.value)}
+                  style={{ width: '100%', padding: '8px' }}
+                >
+                  <option value="">-- Pilih File --</option>
+                  {keys.map(k => (
+                    <option key={k.id} value={k.id}>{k.key_name}</option>
+                  ))}
+                </select>
+                {keys.length === 0 && (
+                  <div style={{ fontSize: '12px', color: 'var(--text-muted)', marginTop: '4px' }}>
+                    Vault Anda kosong. Upload file ke Cloud Vault di menu Encrypt.
+                  </div>
+                )}
+              </div>
 
-          <div className="actions-row" style={{ marginTop: '24px' }}>
-            <button className="btn-secondary" onClick={onClose}>Batal</button>
-            <button className="btn-primary" onClick={handleShare} disabled={loading || !selectedKey}>
-              {loading ? 'Mengirim...' : 'Kirim File'}
-            </button>
-          </div>
+              <div className="field">
+                <label className="field-label">Share Rule (Batas Teruskan)</label>
+                <div className="segmented" style={{ flexWrap: 'wrap' }}>
+                  <button 
+                    className={maxForward === 0 ? 'active' : ''} 
+                    onClick={() => setMaxForward(0)}
+                  >
+                    Hanya Penerima
+                  </button>
+                  <button 
+                    className={maxForward === 1 ? 'active' : ''} 
+                    onClick={() => setMaxForward(1)}
+                  >
+                    Boleh 1x Forward
+                  </button>
+                  <button 
+                    className={maxForward === 2 ? 'active' : ''} 
+                    onClick={() => setMaxForward(2)}
+                  >
+                    Boleh 2x Forward
+                  </button>
+                </div>
+              </div>
 
+              <div className="actions-row" style={{ marginTop: '24px' }}>
+                <button className="btn-secondary" onClick={onClose}>Batal</button>
+                <button className="btn-primary" onClick={handleShare} disabled={loading || !selectedKey}>
+                  {loading ? 'Mengirim...' : 'Kirim File'}
+                </button>
+              </div>
+            </>
+          )}
         </div>
       </div>
     </div>

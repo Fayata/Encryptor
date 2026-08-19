@@ -6,6 +6,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -26,6 +27,7 @@ type Server struct {
 	csrf         *csrfManager
 	loginLimiter *rateLimiter
 	apiLimiter   *rateLimiter
+	shareLimiter *rateLimiter
 }
 
 func NewServer(database *db.DB, port string) (*Server, error) {
@@ -42,6 +44,7 @@ func NewServer(database *db.DB, port string) (*Server, error) {
 		csrf:         newCSRFManager(),
 		loginLimiter: newRateLimiter(5, 1*time.Minute),  // 5 attempts/min for login
 		apiLimiter:   newRateLimiter(30, 1*time.Minute), // 30 req/min for API
+		shareLimiter: newRateLimiter(5, 15*time.Minute), // 5 attempts per 15 mins for share password
 	}
 
 	return s, nil
@@ -627,7 +630,8 @@ func (s *Server) handleVaultDownload(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var req struct {
-		KeyID int64 `json:"key_id"`
+		KeyID         int64  `json:"key_id"`
+		SharePassword string `json:"share_password"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		http.Error(w, "Invalid request payload", http.StatusBadRequest)
@@ -669,6 +673,24 @@ func (s *Server) handleVaultDownload(w http.ResponseWriter, r *http.Request) {
 	var fileKeyBytes []byte
 
 	if k.UserID == user.ID {
+		// Validasi apakah user memasukkan password yang benar (jika ada)
+		if k.EncryptionPassword != "" && req.Password != "" {
+			encPassHex, _ := hex.DecodeString(k.EncryptionPassword)
+			if len(encPassHex) > 0 {
+				aesGCM := &crypto.AESGCM{}
+				actualPass, err := aesGCM.Decrypt(encPassHex, masterKey)
+				if err == nil && req.Password != string(actualPass) {
+					w.WriteHeader(http.StatusForbidden)
+					json.NewEncoder(w).Encode(map[string]interface{}{"error": "Password enkripsi salah. Masukkan password yang Anda buat saat mengenkripsi file ini."})
+					return
+				}
+			}
+		} else if k.EncryptionPassword != "" && req.Password == "" {
+			w.WriteHeader(http.StatusUnauthorized)
+			json.NewEncoder(w).Encode(map[string]interface{}{"error": "Password enkripsi diperlukan."})
+			return
+		}
+
 		wrappedKey, err := hex.DecodeString(k.WrappedFileKeyOwner)
 		if err != nil {
 			w.WriteHeader(http.StatusInternalServerError)
@@ -690,33 +712,65 @@ func (s *Server) handleVaultDownload(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
-		privEnc, err := hex.DecodeString(user.PrivateKeyEnc)
-		if err != nil {
-			w.WriteHeader(http.StatusInternalServerError)
-			json.NewEncoder(w).Encode(map[string]interface{}{"error": "Invalid private key data"})
-			return
-		}
+		if fs.AccessMethod == "password" {
+			shareIDStr := strconv.FormatInt(fs.ID, 10)
+			if !s.shareLimiter.isAllowed(shareIDStr) {
+				w.WriteHeader(http.StatusTooManyRequests)
+				json.NewEncoder(w).Encode(map[string]interface{}{"error": "Terlalu banyak percobaan pada share ini. Coba lagi nanti."})
+				return
+			}
+			if req.SharePassword == "" {
+				w.WriteHeader(http.StatusUnauthorized)
+				json.NewEncoder(w).Encode(map[string]interface{}{"error": "Password required for this share", "require_password": true})
+				return
+			}
 
-		aesGCM := &crypto.AESGCM{}
-		privPEM, err := aesGCM.Decrypt(privEnc, masterKey)
-		if err != nil {
-			w.WriteHeader(http.StatusForbidden)
-			json.NewEncoder(w).Encode(map[string]interface{}{"error": "Failed to unwrap private key"})
-			return
-		}
+			salt, err := hex.DecodeString(fs.PasswordSalt)
+			if err != nil {
+				w.WriteHeader(http.StatusInternalServerError)
+				json.NewEncoder(w).Encode(map[string]interface{}{"error": "Invalid salt data in share"})
+				return
+			}
+			wrapKey := argon2.IDKey([]byte(req.SharePassword), salt, 1, 64*1024, 4, 32)
+			wrappedForMe, _ := hex.DecodeString(fs.WrappedKeyForPassword)
+			
+			aesGCM := &crypto.AESGCM{}
+			fileKeyBytes, err = aesGCM.Decrypt(wrappedForMe, wrapKey)
+			if err != nil {
+				s.db.LogAudit(user.ID, "SHARE_ACCESS_FAILED", "Failed attempt on share "+shareIDStr)
+				w.WriteHeader(http.StatusForbidden)
+				json.NewEncoder(w).Encode(map[string]interface{}{"error": "Password share salah"})
+				return
+			}
+		} else {
+			privEnc, err := hex.DecodeString(user.PrivateKeyEnc)
+			if err != nil {
+				w.WriteHeader(http.StatusInternalServerError)
+				json.NewEncoder(w).Encode(map[string]interface{}{"error": "Invalid private key data"})
+				return
+			}
 
-		wrappedForMe, err := hex.DecodeString(fs.WrappedKeyForRecipient)
-		if err != nil {
-			w.WriteHeader(http.StatusInternalServerError)
-			json.NewEncoder(w).Encode(map[string]interface{}{"error": "Invalid wrapped key for recipient"})
-			return
-		}
+			aesGCM := &crypto.AESGCM{}
+			privPEM, err := aesGCM.Decrypt(privEnc, masterKey)
+			if err != nil {
+				w.WriteHeader(http.StatusForbidden)
+				json.NewEncoder(w).Encode(map[string]interface{}{"error": "Failed to unwrap private key"})
+				return
+			}
 
-		fileKeyBytes, err = crypto.DecryptRSA(string(privPEM), wrappedForMe)
-		if err != nil {
-			w.WriteHeader(http.StatusForbidden)
-			json.NewEncoder(w).Encode(map[string]interface{}{"error": "Failed to decrypt file key"})
-			return
+			wrappedForMe, err := hex.DecodeString(fs.WrappedKeyForRecipient)
+			if err != nil {
+				w.WriteHeader(http.StatusInternalServerError)
+				json.NewEncoder(w).Encode(map[string]interface{}{"error": "Invalid wrapped key for recipient"})
+				return
+			}
+
+			fileKeyBytes, err = crypto.DecryptRSA(string(privPEM), wrappedForMe)
+			if err != nil {
+				w.WriteHeader(http.StatusForbidden)
+				json.NewEncoder(w).Encode(map[string]interface{}{"error": "Failed to decrypt file key"})
+				return
+			}
 		}
 	}
 	fileKeyStr := string(fileKeyBytes)
@@ -1281,23 +1335,65 @@ func (s *Server) handleShare(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	wrappedForRecipient, err := crypto.EncryptRSA(recipient.PublicKey, rawFileKey)
-	if err != nil {
-		http.Error(w, "Failed to re-wrap file key for recipient", http.StatusInternalServerError)
-		return
-	}
-	wrappedForRecipientHex := hex.EncodeToString(wrappedForRecipient)
+	accessMethod := "password" // Default to password as requested
+	var wrappedForRecipientHex, wrappedKeyForPasswordHex, passwordSaltHex string
+	var sharePassword string
 
-	if _, err := s.db.CreateFileShare(req.KeyID, user.ID, recipient.ID, maxForwardCount, scope, wrappedForRecipientHex, expiresAt); err != nil {
+	if accessMethod == "password" {
+		// Generate 12-char random alphanumeric password
+		const letters = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
+		b := make([]byte, 12)
+		if _, err := io.ReadFull(rand.Reader, b); err != nil {
+			http.Error(w, "Failed to generate password", http.StatusInternalServerError)
+			return
+		}
+		for i := range b {
+			b[i] = letters[b[i]%byte(len(letters))]
+		}
+		sharePassword = string(b)
+
+		// Generate 16-byte salt
+		salt := make([]byte, 16)
+		if _, err := io.ReadFull(rand.Reader, salt); err != nil {
+			http.Error(w, "Failed to generate salt", http.StatusInternalServerError)
+			return
+		}
+		passwordSaltHex = hex.EncodeToString(salt)
+
+		// Derive wrapping key using Argon2id
+		wrapKey := argon2.IDKey([]byte(sharePassword), salt, 1, 64*1024, 4, 32)
+
+		// Wrap the rawFileKey using AES-GCM
+		aesGCM := &crypto.AESGCM{}
+		wrapped, err := aesGCM.Encrypt(rawFileKey, wrapKey)
+		if err != nil {
+			http.Error(w, "Failed to wrap key with password", http.StatusInternalServerError)
+			return
+		}
+		wrappedKeyForPasswordHex = hex.EncodeToString(wrapped)
+	} else {
+		wrappedForRecipient, err := crypto.EncryptRSA(recipient.PublicKey, rawFileKey)
+		if err != nil {
+			http.Error(w, "Failed to re-wrap file key for recipient", http.StatusInternalServerError)
+			return
+		}
+		wrappedForRecipientHex = hex.EncodeToString(wrappedForRecipient)
+	}
+
+	if _, err := s.db.CreateFileShare(req.KeyID, user.ID, recipient.ID, maxForwardCount, scope, accessMethod, wrappedForRecipientHex, wrappedKeyForPasswordHex, passwordSaltHex, expiresAt); err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
+	// NO password in notification message!
 	s.db.CreateNotification(recipient.ID, "file_share", "New File Shared", fmt.Sprintf("%s shared a file with you", user.Username), req.KeyID)
 	
-	s.db.LogAudit(user.ID, "SHARE", "Shared key "+strconv.FormatInt(req.KeyID, 10)+" with "+req.RecipientUsername)
+	s.db.LogAudit(user.ID, "SHARE", "Shared key "+strconv.FormatInt(req.KeyID, 10)+" with "+req.RecipientUsername+" using method "+accessMethod)
 
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]string{"status": "shared"})
+	json.NewEncoder(w).Encode(map[string]string{
+		"status": "shared",
+		"share_password": sharePassword,
+	})
 }
 
 func (s *Server) handleKDF(w http.ResponseWriter, r *http.Request) {

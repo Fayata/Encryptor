@@ -104,6 +104,12 @@ export default function FileView({ user, masterKey }) {
   }
 
   const handleOpenDecrypted = async (f) => {
+    if (f.user_id !== user?.id) {
+      alert('File yang dibagikan memerlukan password setiap kali diakses untuk keamanan.')
+      openDecryptModal(f)
+      return
+    }
+    
     if (f.file_path === 'db://vault') {
       // Buka vault in-memory tanpa password prompt lagi karena udah didecrypt (status updated)
       setLoading(true)
@@ -167,7 +173,7 @@ export default function FileView({ user, masterKey }) {
             'X-API-Token': token,
             'X-Master-Key': masterKey
           },
-          body: JSON.stringify({ key_id: modal.id })
+          body: JSON.stringify({ key_id: modal.id, share_password: inputKey, password: inputKey })
         })
 
         if (!res.ok) {
@@ -428,7 +434,7 @@ export default function FileView({ user, masterKey }) {
                   <input
                     type={showKey ? 'text' : 'password'}
                     className="text-input"
-                    placeholder="Masukkan key yang diberikan author..."
+                    placeholder="Masukkan key lokal yang digunakan..."
                     value={inputKey}
                     onChange={e => setInputKey(e.target.value)}
                     onKeyDown={e => e.key === 'Enter' && handleConfirmDecrypt()}
@@ -438,11 +444,45 @@ export default function FileView({ user, masterKey }) {
                     {showKey ? <EyeOff size={15} /> : <Eye size={15} />}
                   </button>
                 </div>
-                <div className="field-hint">Key ini diberikan oleh author yang mengenkripsi file.</div>
+                <div className="field-hint">Key ini digunakan saat mengenkripsi file di perangkat Anda.</div>
+              </div>
+            ) : modal.user_id !== user?.id ? (
+              <div className="field">
+                <label className="field-label">Share Password</label>
+                <div className="input-group">
+                  <input
+                    type={showKey ? 'text' : 'password'}
+                    className="text-input"
+                    placeholder="Masukkan password share dari pengirim..."
+                    value={inputKey}
+                    onChange={e => setInputKey(e.target.value)}
+                    onKeyDown={e => e.key === 'Enter' && handleConfirmDecrypt()}
+                    autoFocus
+                  />
+                  <button className="input-icon-btn" onClick={() => setShowKey(!showKey)}>
+                    {showKey ? <EyeOff size={15} /> : <Eye size={15} />}
+                  </button>
+                </div>
+                <div className="field-hint" style={{ color: 'var(--accent)' }}>File ini dibagikan kepada Anda. Masukkan password share yang diberikan oleh {modal.author}.</div>
               </div>
             ) : (
-              <div className="field-hint" style={{ marginBottom: '16px' }}>
-                File ini akan didekripsi secara aman menggunakan Master Key Anda.
+              <div className="field">
+                <label className="field-label">Password Enkripsi</label>
+                <div className="input-group">
+                  <input
+                    type={showKey ? 'text' : 'password'}
+                    className="text-input"
+                    placeholder="Masukkan password yang Anda buat saat mengenkripsi..."
+                    value={inputKey}
+                    onChange={e => setInputKey(e.target.value)}
+                    onKeyDown={e => e.key === 'Enter' && handleConfirmDecrypt()}
+                    autoFocus
+                  />
+                  <button className="input-icon-btn" onClick={() => setShowKey(!showKey)}>
+                    {showKey ? <EyeOff size={15} /> : <Eye size={15} />}
+                  </button>
+                </div>
+                <div className="field-hint">Sesuai permintaan Anda, masukkan kembali password yang Anda set saat proses enkripsi.</div>
               </div>
             )}
 

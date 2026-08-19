@@ -79,7 +79,10 @@ type FileShare struct {
 	MaxForwardCount     int        `json:"max_forward_count"`
 	CurrentForwardCount int        `json:"current_forward_count"`
 	Scope                  string     `json:"scope"`
+	AccessMethod           string     `json:"access_method"` // 'password' or 'keypair'
 	WrappedKeyForRecipient string     `json:"wrapped_key_for_recipient"`
+	WrappedKeyForPassword  string     `json:"wrapped_key_for_password"`
+	PasswordSalt           string     `json:"password_salt"`
 	ExpiresAt              *time.Time `json:"expires_at"`
 	RevokedAt           *time.Time `json:"revoked_at"`
 	CreatedAt           time.Time  `json:"created_at"`
@@ -209,7 +212,10 @@ func (d *DB) createTables() error {
 		max_forward_count INTEGER DEFAULT 0,
 		current_forward_count INTEGER DEFAULT 0,
 		scope TEXT,
+		access_method TEXT DEFAULT 'password',
 		wrapped_key_for_recipient TEXT,
+		wrapped_key_for_password TEXT,
+		password_salt TEXT,
 		expires_at DATETIME,
 		revoked_at DATETIME,
 		created_at DATETIME DEFAULT CURRENT_TIMESTAMP
@@ -260,6 +266,9 @@ func (d *DB) createTables() error {
 		"ALTER TABLE file_shares ADD COLUMN expires_at DATETIME",
 		"ALTER TABLE file_shares ADD COLUMN revoked_at DATETIME",
 		"ALTER TABLE keys ADD COLUMN encryption_password TEXT DEFAULT ''",
+		"ALTER TABLE file_shares ADD COLUMN access_method TEXT DEFAULT 'password'",
+		"ALTER TABLE file_shares ADD COLUMN wrapped_key_for_password TEXT",
+		"ALTER TABLE file_shares ADD COLUMN password_salt TEXT",
 	} {
 		_, _ = d.conn.Exec(col) // ignore errors
 	}
@@ -475,8 +484,15 @@ func (d *DB) MarkKeyDecrypted(keyID, userID int64) error {
 
 func (d *DB) GetKeysByUserID(userID int64) ([]Key, error) {
 	rows, err := d.conn.Query(
-		`SELECT id, user_id, key_name, algorithm, wrapped_file_key_owner, COALESCE(encryption_password,'') as encryption_password, file_path, COALESCE(author,'') as author, COALESCE(status,'encrypted') as status, decrypted_at, created_at, updated_at FROM keys WHERE user_id = ? ORDER BY updated_at DESC`,
-		userID,
+		`SELECT id, user_id, key_name, algorithm, wrapped_file_key_owner, COALESCE(encryption_password,'') as encryption_password, file_path, COALESCE(author,'') as author, COALESCE(status,'encrypted') as status, decrypted_at, created_at, updated_at 
+		 FROM keys WHERE user_id = ? 
+		 UNION 
+		 SELECT k.id, k.user_id, k.key_name, k.algorithm, '' as wrapped_file_key_owner, '' as encryption_password, k.file_path, (SELECT username FROM users WHERE id = k.user_id) as author, 'encrypted' as status, NULL as decrypted_at, fs.created_at, fs.created_at as updated_at 
+		 FROM keys k 
+		 JOIN file_shares fs ON k.id = fs.key_id 
+		 WHERE fs.recipient_id = ? AND (fs.expires_at IS NULL OR fs.expires_at > CURRENT_TIMESTAMP) AND fs.revoked_at IS NULL 
+		 ORDER BY updated_at DESC`,
+		userID, userID,
 	)
 	if err != nil {
 		return nil, err
@@ -518,7 +534,7 @@ func (d *DB) HasSharedAccess(keyID, recipientID int64) bool {
 
 func (d *DB) GetActiveShare(keyID, recipientID int64) (*FileShare, error) {
 	var fs FileShare
-	err := d.conn.QueryRow("SELECT id, key_id, sender_id, recipient_id, max_forward_count, current_forward_count, scope, wrapped_key_for_recipient, expires_at, revoked_at, created_at FROM file_shares WHERE key_id = ? AND recipient_id = ? AND (expires_at IS NULL OR expires_at > CURRENT_TIMESTAMP) AND revoked_at IS NULL ORDER BY created_at DESC LIMIT 1", keyID, recipientID).Scan(&fs.ID, &fs.KeyID, &fs.SenderID, &fs.RecipientID, &fs.MaxForwardCount, &fs.CurrentForwardCount, &fs.Scope, &fs.WrappedKeyForRecipient, &fs.ExpiresAt, &fs.RevokedAt, &fs.CreatedAt)
+	err := d.conn.QueryRow("SELECT id, key_id, sender_id, recipient_id, max_forward_count, current_forward_count, scope, COALESCE(access_method, 'keypair'), COALESCE(wrapped_key_for_recipient, ''), COALESCE(wrapped_key_for_password, ''), COALESCE(password_salt, ''), expires_at, revoked_at, created_at FROM file_shares WHERE key_id = ? AND recipient_id = ? AND (expires_at IS NULL OR expires_at > CURRENT_TIMESTAMP) AND revoked_at IS NULL ORDER BY created_at DESC LIMIT 1", keyID, recipientID).Scan(&fs.ID, &fs.KeyID, &fs.SenderID, &fs.RecipientID, &fs.MaxForwardCount, &fs.CurrentForwardCount, &fs.Scope, &fs.AccessMethod, &fs.WrappedKeyForRecipient, &fs.WrappedKeyForPassword, &fs.PasswordSalt, &fs.ExpiresAt, &fs.RevokedAt, &fs.CreatedAt)
 	if err != nil {
 		return nil, err
 	}
@@ -699,8 +715,8 @@ func (d *DB) MarkNotificationsRead(userID int64) error {
 	return err
 }
 
-func (d *DB) CreateFileShare(keyID, senderID, recipientID int64, maxForwardCount int, scope, wrappedKeyForRecipient string, expiresAt *time.Time) (*FileShare, error) {
-	res, err := d.conn.Exec("INSERT INTO file_shares (key_id, sender_id, recipient_id, max_forward_count, current_forward_count, scope, wrapped_key_for_recipient, expires_at) VALUES (?, ?, ?, ?, 0, ?, ?, ?)", keyID, senderID, recipientID, maxForwardCount, scope, wrappedKeyForRecipient, expiresAt)
+func (d *DB) CreateFileShare(keyID, senderID, recipientID int64, maxForwardCount int, scope, accessMethod, wrappedKeyForRecipient, wrappedKeyForPassword, passwordSalt string, expiresAt *time.Time) (*FileShare, error) {
+	res, err := d.conn.Exec("INSERT INTO file_shares (key_id, sender_id, recipient_id, max_forward_count, current_forward_count, scope, access_method, wrapped_key_for_recipient, wrapped_key_for_password, password_salt, expires_at) VALUES (?, ?, ?, ?, 0, ?, ?, ?, ?, ?, ?)", keyID, senderID, recipientID, maxForwardCount, scope, accessMethod, wrappedKeyForRecipient, wrappedKeyForPassword, passwordSalt, expiresAt)
 	if err != nil {
 		return nil, err
 	}
@@ -716,7 +732,10 @@ func (d *DB) CreateFileShare(keyID, senderID, recipientID int64, maxForwardCount
 		MaxForwardCount:        maxForwardCount,
 		CurrentForwardCount:    0,
 		Scope:                  scope,
+		AccessMethod:           accessMethod,
 		WrappedKeyForRecipient: wrappedKeyForRecipient,
+		WrappedKeyForPassword:  wrappedKeyForPassword,
+		PasswordSalt:           passwordSalt,
 		ExpiresAt:              expiresAt,
 		CreatedAt:              time.Now(),
 	}, nil
@@ -724,7 +743,7 @@ func (d *DB) CreateFileShare(keyID, senderID, recipientID int64, maxForwardCount
 
 func (d *DB) GetFileShare(shareID int64) (*FileShare, error) {
 	var fs FileShare
-	err := d.conn.QueryRow("SELECT id, key_id, sender_id, recipient_id, max_forward_count, current_forward_count, scope, wrapped_key_for_recipient, expires_at, revoked_at, created_at FROM file_shares WHERE id = ?", shareID).Scan(&fs.ID, &fs.KeyID, &fs.SenderID, &fs.RecipientID, &fs.MaxForwardCount, &fs.CurrentForwardCount, &fs.Scope, &fs.WrappedKeyForRecipient, &fs.ExpiresAt, &fs.RevokedAt, &fs.CreatedAt)
+	err := d.conn.QueryRow("SELECT id, key_id, sender_id, recipient_id, max_forward_count, current_forward_count, scope, COALESCE(access_method, 'keypair'), COALESCE(wrapped_key_for_recipient, ''), COALESCE(wrapped_key_for_password, ''), COALESCE(password_salt, ''), expires_at, revoked_at, created_at FROM file_shares WHERE id = ?", shareID).Scan(&fs.ID, &fs.KeyID, &fs.SenderID, &fs.RecipientID, &fs.MaxForwardCount, &fs.CurrentForwardCount, &fs.Scope, &fs.AccessMethod, &fs.WrappedKeyForRecipient, &fs.WrappedKeyForPassword, &fs.PasswordSalt, &fs.ExpiresAt, &fs.RevokedAt, &fs.CreatedAt)
 	if err != nil {
 		return nil, err
 	}
