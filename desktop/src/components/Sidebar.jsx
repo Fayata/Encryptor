@@ -2,41 +2,34 @@ import React from 'react'
 import {
   Home, Lock, Files, Building2, Users, Globe, Key, Settings, Info, ChevronDown, Shield
 } from 'lucide-react'
+import { useTranslation } from '../lib/i18n'
 
 export default function Sidebar({ currentView, onNavigate, user, userOrgs = [], activeOrg, setActiveOrg }) {
+  const { t } = useTranslation()
   const [wsOpen, setWsOpen] = React.useState(false)
 
   const navGroups = [
     {
-      label: 'Overview',
-      items: [{ id: 'home', icon: Home, text: 'Home' }]
+      label: t('nav.overview'),
+      items: [{ id: 'home', icon: Home, text: t('nav.home') }]
     },
     {
-      label: 'File Operations',
+      label: t('nav.fileOps'),
       items: [
-        { id: 'encrypt', icon: Lock, text: 'Encrypt' },
-        { id: 'decrypt', icon: Files, text: 'File' }
+        { id: 'encrypt', icon: Lock, text: t('nav.encrypt') },
+        { id: 'decrypt', icon: Files, text: t('nav.file') },
+        { id: 'keys', icon: Key, text: t('nav.keys') }
       ]
     },
     {
-      label: 'Organisasi',
-      items: [{ id: 'org', icon: Building2, text: 'Organisasi' }]
+      label: t('nav.collaboration'),
+      items: [{ id: 'workspace', icon: Building2, text: t('nav.workspace') }]
     },
     {
-      label: 'Koneksi',
-      items: [{ id: 'connections', icon: Users, text: 'Koneksi Saya' }]
-    },
-    {
-      label: 'Web Vault',
+      label: t('nav.general'),
       items: [
-        { id: 'keys', icon: Key, text: 'View Keys' }
-      ]
-    },
-    {
-      label: 'General',
-      items: [
-        { id: 'settings', icon: Settings, text: 'Settings' },
-        { id: 'about', icon: Info, text: 'About' }
+        { id: 'settings', icon: Settings, text: t('nav.settings') },
+        { id: 'about', icon: Info, text: t('nav.about') }
       ]
     }
   ]
@@ -48,13 +41,23 @@ export default function Sidebar({ currentView, onNavigate, user, userOrgs = [], 
           <div className="ws-mark">
             <Shield size={16} />
           </div>
-          <div className="ws-name">{activeOrg ? activeOrg.name : (userOrgs.length > 0 ? 'Pilih Organisasi...' : 'Fayata Organization')}</div>
+          <div className="ws-name">{activeOrg ? activeOrg.name : t('nav.personal')}</div>
           <ChevronDown size={14} className="ws-chevron" />
         </div>
         {wsOpen && (
           <div className="ws-menu">
+            <button className={`ws-item ${!activeOrg ? 'active' : ''}`} onClick={(e) => { 
+              e.stopPropagation(); 
+              setActiveOrg(null); 
+              setWsOpen(false); 
+            }}>
+              {t('nav.personal')}
+            </button>
+
+            {userOrgs.length > 0 && <div style={{ height: '1px', background: 'var(--border)', margin: '4px 0' }} />}
+
             {userOrgs.map(org => (
-              <button key={org.id} className="ws-item" onClick={(e) => { 
+              <button key={org.id} className={`ws-item ${activeOrg?.id === org.id ? 'active' : ''}`} onClick={(e) => { 
                 e.stopPropagation(); 
                 setActiveOrg(org); 
                 setWsOpen(false); 
@@ -65,8 +68,8 @@ export default function Sidebar({ currentView, onNavigate, user, userOrgs = [], 
 
             <div style={{ height: '1px', background: 'var(--border)', margin: '4px 0' }} />
 
-            <button className="ws-item" onClick={(e) => { e.stopPropagation(); setWsOpen(false); onNavigate('org'); }}>
-              Buat Organisasi...
+            <button className="ws-item" onClick={(e) => { e.stopPropagation(); setWsOpen(false); onNavigate('workspace'); }}>
+              {t('nav.createOrg')}
             </button>
           </div>
         )}
@@ -98,7 +101,7 @@ export default function Sidebar({ currentView, onNavigate, user, userOrgs = [], 
         </div>
         <div className="footer-info">
           <strong>{user?.username || 'User'}</strong>
-          <span>Vault connected</span>
+          <span>{t('nav.vaultConnected')}</span>
         </div>
         <div className="footer-dot"></div>
       </div>

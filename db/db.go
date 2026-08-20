@@ -39,6 +39,7 @@ type Key struct {
 	FilePath            string     `json:"file_path"`
 	Author              string     `json:"author"`       // username of who encrypted
 	Status              string     `json:"status"`       // "encrypted" or "decrypted"
+	Scope               string     `json:"scope"`        // "mine", "organization", "personal"
 	DecryptedAt         *time.Time `json:"decrypted_at"` // nullable
 	CreatedAt           time.Time  `json:"created_at"`
 	UpdatedAt           time.Time  `json:"updated_at"`
@@ -53,11 +54,14 @@ type Organization struct {
 }
 
 type Connection struct {
-	ID          int64     `json:"id"`
-	RequesterID int64     `json:"requester_id"`
-	RecipientID int64     `json:"recipient_id"`
-	Status      string    `json:"status"`
-	CreatedAt   time.Time `json:"created_at"`
+	ID                int64     `json:"id"`
+	RequesterID       int64     `json:"requester_id"`
+	RecipientID       int64     `json:"recipient_id"`
+	RequesterUsername string    `json:"requester_username"`
+	RecipientUsername string    `json:"recipient_username"`
+	FriendUsername    string    `json:"friend_username"`
+	Status            string    `json:"status"`
+	CreatedAt         time.Time `json:"created_at"`
 }
 
 type Notification struct {
@@ -80,6 +84,7 @@ type FileShare struct {
 	CurrentForwardCount int        `json:"current_forward_count"`
 	Scope                  string     `json:"scope"`
 	AccessMethod           string     `json:"access_method"` // 'password' or 'keypair'
+	OneTimeView            bool       `json:"one_time_view"`
 	WrappedKeyForRecipient string     `json:"wrapped_key_for_recipient"`
 	WrappedKeyForPassword  string     `json:"wrapped_key_for_password"`
 	PasswordSalt           string     `json:"password_salt"`
@@ -213,6 +218,7 @@ func (d *DB) createTables() error {
 		current_forward_count INTEGER DEFAULT 0,
 		scope TEXT,
 		access_method TEXT DEFAULT 'password',
+		one_time_view BOOLEAN DEFAULT 0,
 		wrapped_key_for_recipient TEXT,
 		wrapped_key_for_password TEXT,
 		password_salt TEXT,
@@ -269,9 +275,20 @@ func (d *DB) createTables() error {
 		"ALTER TABLE file_shares ADD COLUMN access_method TEXT DEFAULT 'password'",
 		"ALTER TABLE file_shares ADD COLUMN wrapped_key_for_password TEXT",
 		"ALTER TABLE file_shares ADD COLUMN password_salt TEXT",
+		"ALTER TABLE file_shares ADD COLUMN one_time_view BOOLEAN DEFAULT 0",
 	} {
 		_, _ = d.conn.Exec(col) // ignore errors
 	}
+
+	// Cleanup duplikat record koneksi jika ada ganda di database
+	_, _ = d.conn.Exec(`
+		DELETE FROM connections 
+		WHERE id NOT IN (
+			SELECT MAX(id) FROM connections 
+			GROUP BY CASE WHEN requester_id < recipient_id THEN requester_id || '_' || recipient_id ELSE recipient_id || '_' || requester_id END
+		)
+	`)
+
 	return nil
 }
 
@@ -484,13 +501,14 @@ func (d *DB) MarkKeyDecrypted(keyID, userID int64) error {
 
 func (d *DB) GetKeysByUserID(userID int64) ([]Key, error) {
 	rows, err := d.conn.Query(
-		`SELECT id, user_id, key_name, algorithm, wrapped_file_key_owner, COALESCE(encryption_password,'') as encryption_password, file_path, COALESCE(author,'') as author, COALESCE(status,'encrypted') as status, decrypted_at, created_at, updated_at 
+		`SELECT id, user_id, key_name, algorithm, wrapped_file_key_owner, COALESCE(encryption_password,'') as encryption_password, file_path, COALESCE(author,'') as author, COALESCE(status,'encrypted') as status, 'mine' as scope, decrypted_at, created_at, updated_at 
 		 FROM keys WHERE user_id = ? 
 		 UNION 
-		 SELECT k.id, k.user_id, k.key_name, k.algorithm, '' as wrapped_file_key_owner, '' as encryption_password, k.file_path, (SELECT username FROM users WHERE id = k.user_id) as author, 'encrypted' as status, NULL as decrypted_at, fs.created_at, fs.created_at as updated_at 
+		 SELECT k.id, k.user_id, k.key_name, k.algorithm, '' as wrapped_file_key_owner, '' as encryption_password, k.file_path, COALESCE((SELECT username FROM users WHERE id = k.user_id), k.author, '') as author, COALESCE(k.status, 'encrypted') as status, COALESCE(fs.scope, 'personal') as scope, k.decrypted_at, MAX(fs.created_at) as created_at, MAX(fs.created_at) as updated_at 
 		 FROM keys k 
 		 JOIN file_shares fs ON k.id = fs.key_id 
 		 WHERE fs.recipient_id = ? AND (fs.expires_at IS NULL OR fs.expires_at > CURRENT_TIMESTAMP) AND fs.revoked_at IS NULL 
+		 GROUP BY k.id
 		 ORDER BY updated_at DESC`,
 		userID, userID,
 	)
@@ -502,7 +520,34 @@ func (d *DB) GetKeysByUserID(userID int64) ([]Key, error) {
 	var keys []Key
 	for rows.Next() {
 		var k Key
-		if err := rows.Scan(&k.ID, &k.UserID, &k.KeyName, &k.Algorithm, &k.WrappedFileKeyOwner, &k.EncryptionPassword, &k.FilePath, &k.Author, &k.Status, &k.DecryptedAt, &k.CreatedAt, &k.UpdatedAt); err != nil {
+		if err := rows.Scan(&k.ID, &k.UserID, &k.KeyName, &k.Algorithm, &k.WrappedFileKeyOwner, &k.EncryptionPassword, &k.FilePath, &k.Author, &k.Status, &k.Scope, &k.DecryptedAt, &k.CreatedAt, &k.UpdatedAt); err != nil {
+			return nil, err
+		}
+		keys = append(keys, k)
+	}
+
+	if keys == nil {
+		keys = []Key{}
+	}
+	return keys, nil
+}
+
+func (d *DB) GetOwnedKeysByUserID(userID int64) ([]Key, error) {
+	rows, err := d.conn.Query(
+		`SELECT id, user_id, key_name, algorithm, wrapped_file_key_owner, COALESCE(encryption_password,'') as encryption_password, file_path, COALESCE(author,'') as author, COALESCE(status,'encrypted') as status, 'mine' as scope, decrypted_at, created_at, updated_at 
+		 FROM keys WHERE user_id = ? 
+		 ORDER BY updated_at DESC`,
+		userID,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var keys []Key
+	for rows.Next() {
+		var k Key
+		if err := rows.Scan(&k.ID, &k.UserID, &k.KeyName, &k.Algorithm, &k.WrappedFileKeyOwner, &k.EncryptionPassword, &k.FilePath, &k.Author, &k.Status, &k.Scope, &k.DecryptedAt, &k.CreatedAt, &k.UpdatedAt); err != nil {
 			return nil, err
 		}
 		keys = append(keys, k)
@@ -517,9 +562,9 @@ func (d *DB) GetKeysByUserID(userID int64) ([]Key, error) {
 func (d *DB) GetKeyByID(keyID int64) (*Key, error) {
 	var k Key
 	err := d.conn.QueryRow(
-		`SELECT id, user_id, key_name, algorithm, wrapped_file_key_owner, COALESCE(encryption_password,'') as encryption_password, file_path, COALESCE(author,'') as author, COALESCE(status,'encrypted') as status, decrypted_at, created_at, updated_at FROM keys WHERE id = ?`,
+		`SELECT id, user_id, key_name, algorithm, wrapped_file_key_owner, COALESCE(encryption_password,'') as encryption_password, file_path, COALESCE(author,'') as author, COALESCE(status,'encrypted') as status, 'mine' as scope, decrypted_at, created_at, updated_at FROM keys WHERE id = ?`,
 		keyID,
-	).Scan(&k.ID, &k.UserID, &k.KeyName, &k.Algorithm, &k.WrappedFileKeyOwner, &k.EncryptionPassword, &k.FilePath, &k.Author, &k.Status, &k.DecryptedAt, &k.CreatedAt, &k.UpdatedAt)
+	).Scan(&k.ID, &k.UserID, &k.KeyName, &k.Algorithm, &k.WrappedFileKeyOwner, &k.EncryptionPassword, &k.FilePath, &k.Author, &k.Status, &k.Scope, &k.DecryptedAt, &k.CreatedAt, &k.UpdatedAt)
 	if err != nil {
 		return nil, err
 	}
@@ -534,7 +579,7 @@ func (d *DB) HasSharedAccess(keyID, recipientID int64) bool {
 
 func (d *DB) GetActiveShare(keyID, recipientID int64) (*FileShare, error) {
 	var fs FileShare
-	err := d.conn.QueryRow("SELECT id, key_id, sender_id, recipient_id, max_forward_count, current_forward_count, scope, COALESCE(access_method, 'keypair'), COALESCE(wrapped_key_for_recipient, ''), COALESCE(wrapped_key_for_password, ''), COALESCE(password_salt, ''), expires_at, revoked_at, created_at FROM file_shares WHERE key_id = ? AND recipient_id = ? AND (expires_at IS NULL OR expires_at > CURRENT_TIMESTAMP) AND revoked_at IS NULL ORDER BY created_at DESC LIMIT 1", keyID, recipientID).Scan(&fs.ID, &fs.KeyID, &fs.SenderID, &fs.RecipientID, &fs.MaxForwardCount, &fs.CurrentForwardCount, &fs.Scope, &fs.AccessMethod, &fs.WrappedKeyForRecipient, &fs.WrappedKeyForPassword, &fs.PasswordSalt, &fs.ExpiresAt, &fs.RevokedAt, &fs.CreatedAt)
+	err := d.conn.QueryRow("SELECT id, key_id, sender_id, recipient_id, max_forward_count, current_forward_count, scope, COALESCE(access_method, 'keypair'), COALESCE(one_time_view, 0), COALESCE(wrapped_key_for_recipient, ''), COALESCE(wrapped_key_for_password, ''), COALESCE(password_salt, ''), expires_at, revoked_at, created_at FROM file_shares WHERE key_id = ? AND recipient_id = ? AND (expires_at IS NULL OR expires_at > CURRENT_TIMESTAMP) AND revoked_at IS NULL ORDER BY created_at DESC LIMIT 1", keyID, recipientID).Scan(&fs.ID, &fs.KeyID, &fs.SenderID, &fs.RecipientID, &fs.MaxForwardCount, &fs.CurrentForwardCount, &fs.Scope, &fs.AccessMethod, &fs.OneTimeView, &fs.WrappedKeyForRecipient, &fs.WrappedKeyForPassword, &fs.PasswordSalt, &fs.ExpiresAt, &fs.RevokedAt, &fs.CreatedAt)
 	if err != nil {
 		return nil, err
 	}
@@ -557,7 +602,25 @@ func (d *DB) UpdateKey(keyID, userID int64, newKeyName, newKeyValue string) erro
 	return nil
 }
 
+func (d *DB) UpdateKeyPassword(keyID, userID int64, encPasswordHex string) error {
+	now := time.Now()
+	res, err := d.conn.Exec(
+		`UPDATE keys SET encryption_password = ?, updated_at = ? WHERE id = ? AND user_id = ?`,
+		encPasswordHex, now, keyID, userID,
+	)
+	if err != nil {
+		return err
+	}
+	rowsAffected, _ := res.RowsAffected()
+	if rowsAffected == 0 {
+		return errors.New("key not found or unauthorized")
+	}
+	return nil
+}
+
 func (d *DB) DeleteKey(keyID, userID int64) error {
+	_, _ = d.conn.Exec(`DELETE FROM vault_files WHERE key_id = ?`, keyID)
+	_, _ = d.conn.Exec(`DELETE FROM file_shares WHERE key_id = ?`, keyID)
 	res, err := d.conn.Exec(`DELETE FROM keys WHERE id = ? AND user_id = ?`, keyID, userID)
 	if err != nil {
 		return err
@@ -567,6 +630,30 @@ func (d *DB) DeleteKey(keyID, userID int64) error {
 		return errors.New("key not found or unauthorized")
 	}
 	return nil
+}
+
+func (d *DB) DeleteOrRemoveKey(keyID, userID int64) error {
+	// Jika user adalah pemilik file (owner): hapus key, file BLOB vault, dan semua shares
+	res, err := d.conn.Exec(`DELETE FROM keys WHERE id = ? AND user_id = ?`, keyID, userID)
+	if err == nil {
+		rows, _ := res.RowsAffected()
+		if rows > 0 {
+			_, _ = d.conn.Exec(`DELETE FROM vault_files WHERE key_id = ?`, keyID)
+			_, _ = d.conn.Exec(`DELETE FROM file_shares WHERE key_id = ?`, keyID)
+			return nil
+		}
+	}
+
+	// Jika user adalah penerima share: hapus/revoke share untuk user ini saja
+	resShare, errShare := d.conn.Exec(`DELETE FROM file_shares WHERE key_id = ? AND recipient_id = ?`, keyID, userID)
+	if errShare == nil {
+		rowsShare, _ := resShare.RowsAffected()
+		if rowsShare > 0 {
+			return nil
+		}
+	}
+
+	return errors.New("file tidak ditemukan atau Anda tidak memiliki akses untuk menghapusnya")
 }
 
 func (d *DB) UpdateUserToken(userID int64, newToken string) error {
@@ -656,7 +743,35 @@ func (d *DB) GetOrganizationMembers(orgID int64) ([]map[string]interface{}, erro
 }
 
 func (d *DB) RequestConnection(requesterID, recipientID int64) error {
-	_, err := d.conn.Exec("INSERT INTO connections (requester_id, recipient_id, status) VALUES (?, ?, 'pending')", requesterID, recipientID)
+	if requesterID == recipientID {
+		return errors.New("tidak dapat menambahkan diri sendiri sebagai koneksi")
+	}
+
+	var existingID int64
+	var existingStatus string
+	var existingRequester int64
+
+	err := d.conn.QueryRow(`
+		SELECT id, requester_id, status FROM connections 
+		WHERE (requester_id = ? AND recipient_id = ?) OR (requester_id = ? AND recipient_id = ?)
+	`, requesterID, recipientID, recipientID, requesterID).Scan(&existingID, &existingRequester, &existingStatus)
+
+	if err == nil {
+		if existingStatus == "accepted" {
+			return errors.New("Anda sudah terhubung dengan pengguna ini")
+		}
+		if existingStatus == "pending" {
+			if existingRequester == requesterID {
+				return errors.New("Permintaan koneksi sudah dikirim sebelumnya dan sedang menunggu persetujuan")
+			}
+			return errors.New("Pengguna ini telah mengirim permintaan koneksi kepada Anda. Silakan periksa daftar persetujuan")
+		}
+		// Jika sebelumnya berstatus ditolak / lainnya, aktifkan kembali menjadi pending
+		_, errUpdate := d.conn.Exec("UPDATE connections SET requester_id = ?, recipient_id = ?, status = 'pending', created_at = CURRENT_TIMESTAMP WHERE id = ?", requesterID, recipientID, existingID)
+		return errUpdate
+	}
+
+	_, err = d.conn.Exec("INSERT INTO connections (requester_id, recipient_id, status) VALUES (?, ?, 'pending')", requesterID, recipientID)
 	return err
 }
 
@@ -665,8 +780,46 @@ func (d *DB) AcceptConnection(connectionID int64) error {
 	return err
 }
 
+func (d *DB) RejectConnection(connectionID, userID int64) error {
+	res, err := d.conn.Exec("DELETE FROM connections WHERE id = ? AND (recipient_id = ? OR requester_id = ?)", connectionID, userID, userID)
+	if err != nil {
+		return err
+	}
+	n, _ := res.RowsAffected()
+	if n == 0 {
+		return errors.New("koneksi tidak ditemukan atau tidak memiliki akses")
+	}
+	return nil
+}
+
+func (d *DB) RemoveConnection(connectionID, userID int64) error {
+	res, err := d.conn.Exec("DELETE FROM connections WHERE id = ? AND (recipient_id = ? OR requester_id = ?)", connectionID, userID, userID)
+	if err != nil {
+		return err
+	}
+	n, _ := res.RowsAffected()
+	if n == 0 {
+		return errors.New("koneksi tidak ditemukan atau tidak memiliki akses")
+	}
+	return nil
+}
+
 func (d *DB) GetConnections(userID int64) ([]Connection, error) {
-	rows, err := d.conn.Query("SELECT id, requester_id, recipient_id, status, created_at FROM connections WHERE requester_id = ? OR recipient_id = ?", userID, userID)
+	rows, err := d.conn.Query(`
+		SELECT 
+			c.id, 
+			c.requester_id, 
+			c.recipient_id, 
+			COALESCE(u1.username, '') AS requester_username,
+			COALESCE(u2.username, '') AS recipient_username,
+			c.status, 
+			c.created_at 
+		FROM connections c
+		LEFT JOIN users u1 ON c.requester_id = u1.id
+		LEFT JOIN users u2 ON c.recipient_id = u2.id
+		WHERE c.requester_id = ? OR c.recipient_id = ?
+		ORDER BY c.created_at DESC
+	`, userID, userID)
 	if err != nil {
 		return nil, err
 	}
@@ -674,8 +827,13 @@ func (d *DB) GetConnections(userID int64) ([]Connection, error) {
 	var conns []Connection
 	for rows.Next() {
 		var c Connection
-		if err := rows.Scan(&c.ID, &c.RequesterID, &c.RecipientID, &c.Status, &c.CreatedAt); err != nil {
+		if err := rows.Scan(&c.ID, &c.RequesterID, &c.RecipientID, &c.RequesterUsername, &c.RecipientUsername, &c.Status, &c.CreatedAt); err != nil {
 			return nil, err
+		}
+		if c.RequesterID == userID {
+			c.FriendUsername = c.RecipientUsername
+		} else {
+			c.FriendUsername = c.RequesterUsername
 		}
 		conns = append(conns, c)
 	}
@@ -683,6 +841,79 @@ func (d *DB) GetConnections(userID int64) ([]Connection, error) {
 		conns = []Connection{}
 	}
 	return conns, nil
+}
+
+type UserSearchResult struct {
+	ID               int64  `json:"id"`
+	Username         string `json:"username"`
+	ConnectionStatus string `json:"connection_status"` // "none", "accepted", "pending_sent", "pending_received"
+	ConnectionID     int64  `json:"connection_id,omitempty"`
+}
+
+func (d *DB) SearchUsers(query string, currentUserID int64) ([]UserSearchResult, error) {
+	if query == "" {
+		return []UserSearchResult{}, nil
+	}
+
+	searchPattern := "%" + query + "%"
+	prefixPattern := query + "%"
+
+	rows, err := d.conn.Query(`
+		SELECT 
+			u.id, 
+			u.username,
+			COALESCE(c.id, 0) as connection_id,
+			COALESCE(c.status, 'none') as conn_raw_status,
+			COALESCE(c.requester_id, 0) as requester_id,
+			COALESCE(c.recipient_id, 0) as recipient_id
+		FROM users u
+		LEFT JOIN connections c ON (
+			(c.requester_id = ? AND c.recipient_id = u.id) OR 
+			(c.requester_id = u.id AND c.recipient_id = ?)
+		)
+		WHERE u.id != ? AND u.username LIKE ?
+		ORDER BY 
+			CASE WHEN u.username LIKE ? THEN 1 ELSE 2 END,
+			u.username ASC
+		LIMIT 20
+	`, currentUserID, currentUserID, currentUserID, searchPattern, prefixPattern)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var results []UserSearchResult
+	for rows.Next() {
+		var r UserSearchResult
+		var connID int64
+		var rawStatus string
+		var reqID, recID int64
+
+		if err := rows.Scan(&r.ID, &r.Username, &connID, &rawStatus, &reqID, &recID); err != nil {
+			return nil, err
+		}
+
+		if rawStatus == "accepted" {
+			r.ConnectionStatus = "accepted"
+			r.ConnectionID = connID
+		} else if rawStatus == "pending" {
+			if reqID == currentUserID {
+				r.ConnectionStatus = "pending_sent"
+			} else {
+				r.ConnectionStatus = "pending_received"
+			}
+			r.ConnectionID = connID
+		} else {
+			r.ConnectionStatus = "none"
+		}
+
+		results = append(results, r)
+	}
+
+	if results == nil {
+		results = []UserSearchResult{}
+	}
+	return results, nil
 }
 
 func (d *DB) CreateNotification(userID int64, ntype, title, message string, relatedID int64) error {
@@ -715,8 +946,13 @@ func (d *DB) MarkNotificationsRead(userID int64) error {
 	return err
 }
 
-func (d *DB) CreateFileShare(keyID, senderID, recipientID int64, maxForwardCount int, scope, accessMethod, wrappedKeyForRecipient, wrappedKeyForPassword, passwordSalt string, expiresAt *time.Time) (*FileShare, error) {
-	res, err := d.conn.Exec("INSERT INTO file_shares (key_id, sender_id, recipient_id, max_forward_count, current_forward_count, scope, access_method, wrapped_key_for_recipient, wrapped_key_for_password, password_salt, expires_at) VALUES (?, ?, ?, ?, 0, ?, ?, ?, ?, ?, ?)", keyID, senderID, recipientID, maxForwardCount, scope, accessMethod, wrappedKeyForRecipient, wrappedKeyForPassword, passwordSalt, expiresAt)
+func (d *DB) MarkNotificationReadByID(notifID, userID int64) error {
+	_, err := d.conn.Exec("UPDATE notifications SET is_read = 1 WHERE id = ? AND user_id = ?", notifID, userID)
+	return err
+}
+
+func (d *DB) CreateFileShare(keyID, senderID, recipientID int64, maxForwardCount int, scope, accessMethod string, oneTimeView bool, wrappedKeyForRecipient, wrappedKeyForPassword, passwordSalt string, expiresAt *time.Time) (*FileShare, error) {
+	res, err := d.conn.Exec("INSERT INTO file_shares (key_id, sender_id, recipient_id, max_forward_count, current_forward_count, scope, access_method, one_time_view, wrapped_key_for_recipient, wrapped_key_for_password, password_salt, expires_at) VALUES (?, ?, ?, ?, 0, ?, ?, ?, ?, ?, ?, ?)", keyID, senderID, recipientID, maxForwardCount, scope, accessMethod, oneTimeView, wrappedKeyForRecipient, wrappedKeyForPassword, passwordSalt, expiresAt)
 	if err != nil {
 		return nil, err
 	}
@@ -725,14 +961,15 @@ func (d *DB) CreateFileShare(keyID, senderID, recipientID int64, maxForwardCount
 		return nil, err
 	}
 	return &FileShare{
-		ID: id,
-		KeyID: keyID,
-		SenderID: senderID,
-		RecipientID: recipientID,
+		ID:                     id,
+		KeyID:                  keyID,
+		SenderID:              senderID,
+		RecipientID:           recipientID,
 		MaxForwardCount:        maxForwardCount,
 		CurrentForwardCount:    0,
 		Scope:                  scope,
 		AccessMethod:           accessMethod,
+		OneTimeView:            oneTimeView,
 		WrappedKeyForRecipient: wrappedKeyForRecipient,
 		WrappedKeyForPassword:  wrappedKeyForPassword,
 		PasswordSalt:           passwordSalt,
@@ -743,7 +980,7 @@ func (d *DB) CreateFileShare(keyID, senderID, recipientID int64, maxForwardCount
 
 func (d *DB) GetFileShare(shareID int64) (*FileShare, error) {
 	var fs FileShare
-	err := d.conn.QueryRow("SELECT id, key_id, sender_id, recipient_id, max_forward_count, current_forward_count, scope, COALESCE(access_method, 'keypair'), COALESCE(wrapped_key_for_recipient, ''), COALESCE(wrapped_key_for_password, ''), COALESCE(password_salt, ''), expires_at, revoked_at, created_at FROM file_shares WHERE id = ?", shareID).Scan(&fs.ID, &fs.KeyID, &fs.SenderID, &fs.RecipientID, &fs.MaxForwardCount, &fs.CurrentForwardCount, &fs.Scope, &fs.AccessMethod, &fs.WrappedKeyForRecipient, &fs.WrappedKeyForPassword, &fs.PasswordSalt, &fs.ExpiresAt, &fs.RevokedAt, &fs.CreatedAt)
+	err := d.conn.QueryRow("SELECT id, key_id, sender_id, recipient_id, max_forward_count, current_forward_count, scope, COALESCE(access_method, 'keypair'), COALESCE(one_time_view, 0), COALESCE(wrapped_key_for_recipient, ''), COALESCE(wrapped_key_for_password, ''), COALESCE(password_salt, ''), expires_at, revoked_at, created_at FROM file_shares WHERE id = ?", shareID).Scan(&fs.ID, &fs.KeyID, &fs.SenderID, &fs.RecipientID, &fs.MaxForwardCount, &fs.CurrentForwardCount, &fs.Scope, &fs.AccessMethod, &fs.OneTimeView, &fs.WrappedKeyForRecipient, &fs.WrappedKeyForPassword, &fs.PasswordSalt, &fs.ExpiresAt, &fs.RevokedAt, &fs.CreatedAt)
 	if err != nil {
 		return nil, err
 	}

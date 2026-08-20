@@ -3,7 +3,7 @@ import { api } from '../lib/api'
 import { Building2, Plus, Users } from 'lucide-react'
 import ShareModal from '../components/ShareModal'
 
-export default function OrganizationView({ user, activeOrg, setActiveOrg, userOrgs, fetchUserOrgs }) {
+export default function OrganizationView({ user, masterKey, activeOrg, setActiveOrg, userOrgs, fetchUserOrgs }) {
   const [formMode, setFormMode] = useState('none') // 'none', 'create', 'join'
   const [orgName, setOrgName] = useState('')
   const [orgDesc, setOrgDesc] = useState('')
@@ -76,6 +76,7 @@ export default function OrganizationView({ user, activeOrg, setActiveOrg, userOr
       {shareRecipient && (
         <ShareModal 
           recipientUsername={shareRecipient} 
+          masterKey={masterKey}
           onClose={() => setShareRecipient(null)} 
         />
       )}

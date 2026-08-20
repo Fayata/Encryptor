@@ -25,7 +25,20 @@ export async function api(path, options = {}) {
       ...options.headers,
     },
   })
-  const data = await res.json()
+
+  let data
+  const contentType = res.headers.get('content-type') || ''
+  if (contentType.includes('application/json')) {
+    data = await res.json()
+  } else {
+    const text = await res.text()
+    try {
+      data = JSON.parse(text)
+    } catch {
+      data = { error: text || 'Request failed' }
+    }
+  }
+
   if (!res.ok) throw new Error(data.error || 'Request failed')
   return data
 }

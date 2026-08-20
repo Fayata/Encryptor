@@ -18,6 +18,7 @@ import (
 	"encryptor/db"
 	"encryptor/fileops"
 	"encryptor/security"
+
 	"golang.org/x/crypto/argon2"
 )
 
@@ -70,6 +71,7 @@ func (s *Server) Start() {
 		mux.HandleFunc("/api/vault/upload", limitBody(rateLimitMiddleware(s.apiLimiter, s.handleVaultUpload)))
 		mux.HandleFunc("/api/vault/download", limitBody(rateLimitMiddleware(s.apiLimiter, s.handleVaultDownload)))
 		mux.HandleFunc("/api/files", limitBody(rateLimitMiddleware(s.apiLimiter, s.handleAPIKeys)))
+		mux.HandleFunc("/api/files/", limitBody(rateLimitMiddleware(s.apiLimiter, s.handleAPIKeyByID)))
 		mux.HandleFunc("/api/keys", limitBody(rateLimitMiddleware(s.apiLimiter, s.handleAPIKeys)))
 		mux.HandleFunc("/api/keys/", limitBody(rateLimitMiddleware(s.apiLimiter, s.handleAPIKeyByID)))
 
@@ -83,13 +85,17 @@ func (s *Server) Start() {
 			}
 		})))
 
-		// Connections
+		// Connections & User Search
+		mux.HandleFunc("/api/users/search", limitBody(rateLimitMiddleware(s.apiLimiter, s.handleSearchUsers)))
 		mux.HandleFunc("/api/connections/request", limitBody(rateLimitMiddleware(s.apiLimiter, s.handleConnectionRequest)))
 		mux.HandleFunc("/api/connections/accept", limitBody(rateLimitMiddleware(s.apiLimiter, s.handleConnectionAccept)))
+		mux.HandleFunc("/api/connections/reject", limitBody(rateLimitMiddleware(s.apiLimiter, s.handleConnectionReject)))
+		mux.HandleFunc("/api/connections/remove", limitBody(rateLimitMiddleware(s.apiLimiter, s.handleConnectionRemove)))
 		mux.HandleFunc("/api/connections", limitBody(rateLimitMiddleware(s.apiLimiter, s.handleConnections)))
 
 		// Notifications
 		mux.HandleFunc("/api/notifications", limitBody(rateLimitMiddleware(s.apiLimiter, s.handleNotifications)))
+		mux.HandleFunc("/api/notifications/stream", limitBody(rateLimitMiddleware(s.apiLimiter, s.handleNotifications)))
 		mux.HandleFunc("/api/notifications/read", limitBody(rateLimitMiddleware(s.apiLimiter, s.handleNotificationsRead)))
 
 		// File Shares
@@ -203,7 +209,7 @@ func (s *Server) handleRegister(w http.ResponseWriter, r *http.Request) {
 
 	username := strings.TrimSpace(req.Username)
 	email := strings.TrimSpace(req.Email)
-	
+
 	apiToken := "enc_" + generateToken()
 
 	salt := []byte(email)
@@ -315,26 +321,26 @@ func (s *Server) handleLocalEncrypt(w http.ResponseWriter, r *http.Request) {
 		json.NewEncoder(w).Encode(map[string]interface{}{"error": "Invalid X-Master-Key header"})
 		return
 	}
-    
-    w.Header().Set("Content-Type", "application/json")
+
+	w.Header().Set("Content-Type", "application/json")
 
 	if _, err := os.Stat(req.FolderPath); os.IsNotExist(err) {
-        w.WriteHeader(http.StatusBadRequest)
-        json.NewEncoder(w).Encode(map[string]interface{}{"error": "Folder does not exist"})
-        return
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(map[string]interface{}{"error": "Folder does not exist"})
+		return
 	}
 
 	files, err := fileops.ScanFolder(req.FolderPath)
-    if err != nil {
-        w.WriteHeader(http.StatusInternalServerError)
-        json.NewEncoder(w).Encode(map[string]interface{}{"error": err.Error()})
-        return
-    }
+	if err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		json.NewEncoder(w).Encode(map[string]interface{}{"error": err.Error()})
+		return
+	}
 
 	enc, err := crypto.NewEncryptor(req.Algorithm)
 	if err != nil {
-        w.WriteHeader(http.StatusBadRequest)
-        json.NewEncoder(w).Encode(map[string]interface{}{"error": "Invalid algorithm"})
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(map[string]interface{}{"error": "Invalid algorithm"})
 		return
 	}
 
@@ -443,7 +449,7 @@ func (s *Server) handleLocalDecrypt(w http.ResponseWriter, r *http.Request) {
 
 	// Auto-mark matching key in vault as decrypted and find the file key
 	keys, _ := s.db.GetKeysByUserID(user.ID)
-	
+
 	// Default to request password if not using vault
 	actualKeyToUse := req.Password
 
@@ -547,7 +553,7 @@ func (s *Server) handleVaultUpload(w http.ResponseWriter, r *http.Request) {
 	if algorithm == "" {
 		algorithm = "aes-gcm"
 	}
-	
+
 	enc, err := crypto.NewEncryptor(algorithm)
 	if err != nil {
 		w.WriteHeader(http.StatusBadRequest)
@@ -585,6 +591,7 @@ func (s *Server) handleVaultUpload(w http.ResponseWriter, r *http.Request) {
 
 	vaultFilePath := "db://vault"
 	originalName := filepath.Base(req.FilePath)
+	vaultKeyName := fmt.Sprintf("%d-%s-%s", time.Now().Unix(), user.Username, originalName)
 
 	// Encrypt user's password with masterKey before storing — only owner can decrypt it
 	var encPasswordHex string
@@ -596,7 +603,7 @@ func (s *Server) handleVaultUpload(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	keyObj, err := s.db.CreateKey(user.ID, originalName, algorithm, wrappedKeyHex, vaultFilePath, user.Username, encPasswordHex)
+	keyObj, err := s.db.CreateKey(user.ID, vaultKeyName, algorithm, wrappedKeyHex, vaultFilePath, user.Username, encPasswordHex)
 	if err != nil {
 		w.WriteHeader(http.StatusInternalServerError)
 		json.NewEncoder(w).Encode(map[string]interface{}{"error": "Failed to store key in db"})
@@ -672,24 +679,41 @@ func (s *Server) handleVaultDownload(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var fileKeyBytes []byte
+	var activeShare *db.FileShare
 
 	if k.UserID == user.ID {
-		// Validasi apakah user memasukkan password yang benar (jika ada)
-		if k.EncryptionPassword != "" && req.Password != "" {
-			encPassHex, _ := hex.DecodeString(k.EncryptionPassword)
-			if len(encPassHex) > 0 {
-				aesGCM := &crypto.AESGCM{}
-				actualPass, err := aesGCM.Decrypt(encPassHex, masterKey)
-				if err == nil && req.Password != string(actualPass) {
-					w.WriteHeader(http.StatusForbidden)
-					json.NewEncoder(w).Encode(map[string]interface{}{"error": "Password enkripsi salah. Masukkan password yang Anda buat saat mengenkripsi file ini."})
-					return
+		// Validasi password enkripsi jika file belum berstatus 'decrypted'
+		if k.Status != "decrypted" {
+			if k.EncryptionPassword != "" && req.Password != "" {
+				encPassHex, _ := hex.DecodeString(k.EncryptionPassword)
+				if len(encPassHex) > 0 {
+					aesGCM := &crypto.AESGCM{}
+					actualPass, err := aesGCM.Decrypt(encPassHex, masterKey)
+					if err == nil && req.Password != string(actualPass) {
+						w.WriteHeader(http.StatusForbidden)
+						json.NewEncoder(w).Encode(map[string]interface{}{"error": "Password enkripsi salah. Masukkan password yang Anda buat saat mengenkripsi file ini."})
+						return
+					}
+				}
+			} else if k.EncryptionPassword != "" && req.Password == "" {
+				w.WriteHeader(http.StatusUnauthorized)
+				json.NewEncoder(w).Encode(map[string]interface{}{"error": "Password enkripsi diperlukan."})
+				return
+			}
+		} else {
+			// Jika sudah 'decrypted', jika user menyertakan password maka verifikasi (opsional)
+			if k.EncryptionPassword != "" && req.Password != "" {
+				encPassHex, _ := hex.DecodeString(k.EncryptionPassword)
+				if len(encPassHex) > 0 {
+					aesGCM := &crypto.AESGCM{}
+					actualPass, err := aesGCM.Decrypt(encPassHex, masterKey)
+					if err == nil && req.Password != string(actualPass) {
+						w.WriteHeader(http.StatusForbidden)
+						json.NewEncoder(w).Encode(map[string]interface{}{"error": "Password enkripsi salah."})
+						return
+					}
 				}
 			}
-		} else if k.EncryptionPassword != "" && req.Password == "" {
-			w.WriteHeader(http.StatusUnauthorized)
-			json.NewEncoder(w).Encode(map[string]interface{}{"error": "Password enkripsi diperlukan."})
-			return
 		}
 
 		wrappedKey, err := hex.DecodeString(k.WrappedFileKeyOwner)
@@ -712,6 +736,7 @@ func (s *Server) handleVaultDownload(w http.ResponseWriter, r *http.Request) {
 			json.NewEncoder(w).Encode(map[string]interface{}{"error": "No active share found"})
 			return
 		}
+		activeShare = fs
 
 		if fs.AccessMethod == "password" {
 			shareIDStr := strconv.FormatInt(fs.ID, 10)
@@ -734,7 +759,7 @@ func (s *Server) handleVaultDownload(w http.ResponseWriter, r *http.Request) {
 			}
 			wrapKey := argon2.IDKey([]byte(req.SharePassword), salt, 1, 64*1024, 4, 32)
 			wrappedForMe, _ := hex.DecodeString(fs.WrappedKeyForPassword)
-			
+
 			aesGCM := &crypto.AESGCM{}
 			fileKeyBytes, err = aesGCM.Decrypt(wrappedForMe, wrapKey)
 			if err != nil {
@@ -789,14 +814,14 @@ func (s *Server) handleVaultDownload(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	algoID := encBytes[5]
-	
+
 	enc, err := crypto.NewEncryptorByID(algoID)
 	if err != nil {
 		w.WriteHeader(http.StatusInternalServerError)
 		json.NewEncoder(w).Encode(map[string]interface{}{"error": "Unsupported algorithm"})
 		return
 	}
-	
+
 	fileNameLen := binary.LittleEndian.Uint16(encBytes[6:8])
 	saltOffset := 8 + int(fileNameLen)
 	if len(encBytes) < saltOffset+16 {
@@ -822,6 +847,11 @@ func (s *Server) handleVaultDownload(w http.ResponseWriter, r *http.Request) {
 		fmt.Println("Warning: Failed to mark key as decrypted:", err)
 	}
 
+	if activeShare != nil && activeShare.OneTimeView {
+		_ = s.db.RevokeFileShare(activeShare.ID)
+		s.db.LogAudit(user.ID, "SHARE_BURNED", fmt.Sprintf("File share ID %d otomatis dihancurkan setelah 1x dibuka oleh %s", activeShare.ID, user.Username))
+	}
+
 	w.Header().Set("Content-Disposition", fmt.Sprintf("attachment; filename=\"%s\"", k.KeyName))
 	w.Header().Set("Content-Type", "application/octet-stream")
 	w.Header().Set("Content-Length", fmt.Sprintf("%d", len(plaintext)))
@@ -840,7 +870,13 @@ func (s *Server) handleAPIKeys(w http.ResponseWriter, r *http.Request) {
 
 	switch r.Method {
 	case http.MethodGet:
-		keys, err := s.db.GetKeysByUserID(user.ID)
+		var keys []db.Key
+		var err error
+		if r.URL.Query().Get("mine") == "true" || r.URL.Query().Get("author_only") == "true" {
+			keys, err = s.db.GetOwnedKeysByUserID(user.ID)
+		} else {
+			keys, err = s.db.GetKeysByUserID(user.ID)
+		}
 		if err != nil {
 			w.WriteHeader(http.StatusInternalServerError)
 			json.NewEncoder(w).Encode(map[string]string{"error": "An internal error occurred"})
@@ -929,8 +965,10 @@ func (s *Server) handleAPIKeyByID(w http.ResponseWriter, r *http.Request) {
 	switch r.Method {
 	case http.MethodPut:
 		var req struct {
-			KeyName  string `json:"key_name"`
-			KeyValue string `json:"key_value"`
+			KeyName            string  `json:"key_name"`
+			KeyValue           string  `json:"key_value"`
+			Password           *string `json:"password"`
+			EncryptionPassword *string `json:"encryption_password"`
 		}
 
 		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
@@ -945,21 +983,63 @@ func (s *Server) handleAPIKeyByID(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
-		if err := s.db.UpdateKey(keyID, user.ID, req.KeyName, req.KeyValue); err != nil {
-			w.WriteHeader(http.StatusBadRequest)
-			json.NewEncoder(w).Encode(map[string]string{"error": err.Error()})
-			return
+		if req.Password != nil {
+			var encPasswordHex string
+			if *req.Password != "" {
+				masterKeyHex := r.Header.Get("X-Master-Key")
+				if masterKeyHex == "" {
+					w.WriteHeader(http.StatusBadRequest)
+					json.NewEncoder(w).Encode(map[string]string{"error": "Missing X-Master-Key header"})
+					return
+				}
+				masterKey, err := hex.DecodeString(masterKeyHex)
+				if err != nil || len(masterKey) != 32 {
+					w.WriteHeader(http.StatusBadRequest)
+					json.NewEncoder(w).Encode(map[string]string{"error": "Invalid X-Master-Key header"})
+					return
+				}
+				aesGCMCipher := &crypto.AESGCM{}
+				encPassBytes, encErr := aesGCMCipher.Encrypt([]byte(*req.Password), masterKey)
+				if encErr != nil {
+					w.WriteHeader(http.StatusInternalServerError)
+					json.NewEncoder(w).Encode(map[string]string{"error": "Failed to encrypt password"})
+					return
+				}
+				encPasswordHex = hex.EncodeToString(encPassBytes)
+			}
+			if err := s.db.UpdateKeyPassword(keyID, user.ID, encPasswordHex); err != nil {
+				w.WriteHeader(http.StatusBadRequest)
+				json.NewEncoder(w).Encode(map[string]string{"error": err.Error()})
+				return
+			}
+			s.db.LogAudit(user.ID, "UPDATE_KEY_PASSWORD", fmt.Sprintf("Password encryption untuk Key ID %d diperbarui oleh %s", keyID, user.Username))
+		} else if req.EncryptionPassword != nil {
+			if err := s.db.UpdateKeyPassword(keyID, user.ID, *req.EncryptionPassword); err != nil {
+				w.WriteHeader(http.StatusBadRequest)
+				json.NewEncoder(w).Encode(map[string]string{"error": err.Error()})
+				return
+			}
+			s.db.LogAudit(user.ID, "UPDATE_KEY_PASSWORD", fmt.Sprintf("Password encryption untuk Key ID %d diperbarui oleh %s", keyID, user.Username))
+		}
+
+		if req.KeyName != "" || req.KeyValue != "" {
+			if err := s.db.UpdateKey(keyID, user.ID, req.KeyName, req.KeyValue); err != nil {
+				w.WriteHeader(http.StatusBadRequest)
+				json.NewEncoder(w).Encode(map[string]string{"error": err.Error()})
+				return
+			}
 		}
 
 		json.NewEncoder(w).Encode(map[string]string{"status": "success"})
 
 	case http.MethodDelete:
-		if err := s.db.DeleteKey(keyID, user.ID); err != nil {
+		if err := s.db.DeleteOrRemoveKey(keyID, user.ID); err != nil {
 			w.WriteHeader(http.StatusBadRequest)
 			json.NewEncoder(w).Encode(map[string]string{"error": err.Error()})
 			return
 		}
 
+		s.db.LogAudit(user.ID, "DELETE_FILE", fmt.Sprintf("File/Key ID %d dihapus oleh %s", keyID, user.Username))
 		json.NewEncoder(w).Encode(map[string]string{"status": "success"})
 
 	default:
@@ -1069,61 +1149,189 @@ func (s *Server) handleLeaveOrg(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(map[string]bool{"success": true})
 }
 
+func (s *Server) handleSearchUsers(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+	if r.Method != http.MethodGet {
+		w.WriteHeader(http.StatusMethodNotAllowed)
+		json.NewEncoder(w).Encode(map[string]string{"error": "Method not allowed"})
+		return
+	}
+
+	user := s.getAuthenticatedUser(r)
+	if user == nil {
+		w.WriteHeader(http.StatusUnauthorized)
+		json.NewEncoder(w).Encode(map[string]string{"error": "Unauthorized"})
+		return
+	}
+
+	query := strings.TrimSpace(r.URL.Query().Get("q"))
+	if query == "" {
+		json.NewEncoder(w).Encode([]db.UserSearchResult{})
+		return
+	}
+
+	if len(query) > 50 {
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(map[string]string{"error": "Query too long"})
+		return
+	}
+
+	results, err := s.db.SearchUsers(query, user.ID)
+	if err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		json.NewEncoder(w).Encode(map[string]string{"error": "Failed to search users"})
+		return
+	}
+
+	json.NewEncoder(w).Encode(results)
+}
+
 func (s *Server) handleConnectionRequest(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
 	if r.Method != http.MethodPost {
-		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		w.WriteHeader(http.StatusMethodNotAllowed)
+		json.NewEncoder(w).Encode(map[string]string{"error": "Method not allowed"})
 		return
 	}
 	user := s.getAuthenticatedUser(r)
 	if user == nil {
-		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		w.WriteHeader(http.StatusUnauthorized)
+		json.NewEncoder(w).Encode(map[string]string{"error": "Unauthorized"})
 		return
 	}
 	var req struct {
 		Username string `json:"username"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		http.Error(w, "Invalid JSON", http.StatusBadRequest)
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(map[string]string{"error": "Invalid JSON format"})
 		return
 	}
 	recipient, err := s.db.GetUserByUsername(req.Username)
 	if err != nil {
-		http.Error(w, "User not found", http.StatusNotFound)
+		w.WriteHeader(http.StatusNotFound)
+		json.NewEncoder(w).Encode(map[string]string{"error": "Pengguna dengan username '" + req.Username + "' tidak ditemukan"})
 		return
 	}
 	if err := s.db.RequestConnection(user.ID, recipient.ID); err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(map[string]string{"error": err.Error()})
 		return
 	}
-	s.db.CreateNotification(recipient.ID, "connection_request", "New Connection Request", fmt.Sprintf("%s wants to connect", user.Username), user.ID)
+	s.db.CreateNotification(recipient.ID, "connection_request", "Permintaan Pertemanan", fmt.Sprintf("%s mengirimkan permintaan pertemanan kepada Anda", user.Username), user.ID)
 
-	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]string{"status": "requested"})
 }
 
 func (s *Server) handleConnectionAccept(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
 	if r.Method != http.MethodPost {
-		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		w.WriteHeader(http.StatusMethodNotAllowed)
+		json.NewEncoder(w).Encode(map[string]string{"error": "Method not allowed"})
 		return
 	}
 	user := s.getAuthenticatedUser(r)
 	if user == nil {
-		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		w.WriteHeader(http.StatusUnauthorized)
+		json.NewEncoder(w).Encode(map[string]string{"error": "Unauthorized"})
 		return
 	}
 	var req struct {
 		ConnectionID int64 `json:"connection_id"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		http.Error(w, "Invalid JSON", http.StatusBadRequest)
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(map[string]string{"error": "Invalid JSON"})
 		return
 	}
+
+	// Cari requester_id untuk dikirimi notifikasi
+	var requesterID int64
+	conns, _ := s.db.GetConnections(user.ID)
+	for _, c := range conns {
+		if c.ID == req.ConnectionID {
+			if c.RequesterID == user.ID {
+				requesterID = c.RecipientID
+			} else {
+				requesterID = c.RequesterID
+			}
+			break
+		}
+	}
+
 	if err := s.db.AcceptConnection(req.ConnectionID); err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(map[string]string{"error": err.Error()})
 		return
 	}
-	w.Header().Set("Content-Type", "application/json")
+
+	if requesterID > 0 {
+		_ = s.db.CreateNotification(requesterID, "connection_accepted", "Permintaan Pertemanan Diterima", fmt.Sprintf("%s telah menerima permintaan pertemanan Anda", user.Username), user.ID)
+	}
+
 	json.NewEncoder(w).Encode(map[string]string{"status": "accepted"})
+}
+
+func (s *Server) handleConnectionReject(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+	if r.Method != http.MethodPost {
+		w.WriteHeader(http.StatusMethodNotAllowed)
+		json.NewEncoder(w).Encode(map[string]string{"error": "Method not allowed"})
+		return
+	}
+	user := s.getAuthenticatedUser(r)
+	if user == nil {
+		w.WriteHeader(http.StatusUnauthorized)
+		json.NewEncoder(w).Encode(map[string]string{"error": "Unauthorized"})
+		return
+	}
+	var req struct {
+		ConnectionID int64 `json:"connection_id"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(map[string]string{"error": "Invalid JSON"})
+		return
+	}
+
+	if err := s.db.RejectConnection(req.ConnectionID, user.ID); err != nil {
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(map[string]string{"error": err.Error()})
+		return
+	}
+
+	json.NewEncoder(w).Encode(map[string]string{"status": "rejected"})
+}
+
+func (s *Server) handleConnectionRemove(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+	if r.Method != http.MethodPost {
+		w.WriteHeader(http.StatusMethodNotAllowed)
+		json.NewEncoder(w).Encode(map[string]string{"error": "Method not allowed"})
+		return
+	}
+	user := s.getAuthenticatedUser(r)
+	if user == nil {
+		w.WriteHeader(http.StatusUnauthorized)
+		json.NewEncoder(w).Encode(map[string]string{"error": "Unauthorized"})
+		return
+	}
+	var req struct {
+		ConnectionID int64 `json:"connection_id"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(map[string]string{"error": "Invalid JSON"})
+		return
+	}
+
+	if err := s.db.RemoveConnection(req.ConnectionID, user.ID); err != nil {
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(map[string]string{"error": err.Error()})
+		return
+	}
+
+	json.NewEncoder(w).Encode(map[string]string{"status": "removed"})
 }
 
 func (s *Server) handleConnections(w http.ResponseWriter, r *http.Request) {
@@ -1146,99 +1354,153 @@ func (s *Server) handleConnections(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleNotifications(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodGet {
-		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
-		return
-	}
 	user := s.getAuthenticatedUser(r)
 	if user == nil {
-		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		w.WriteHeader(http.StatusUnauthorized)
+		json.NewEncoder(w).Encode(map[string]string{"error": "Unauthorized"})
 		return
 	}
 
-	w.Header().Set("Content-Type", "text/event-stream")
-	w.Header().Set("Cache-Control", "no-cache")
-	w.Header().Set("Connection", "keep-alive")
+	// Jika SSE stream
+	isSSE := strings.Contains(r.URL.Path, "/stream") || r.Header.Get("Accept") == "text/event-stream"
+	if isSSE {
+		w.Header().Set("Content-Type", "text/event-stream")
+		w.Header().Set("Cache-Control", "no-cache")
+		w.Header().Set("Connection", "keep-alive")
 
-	flusher, ok := w.(http.Flusher)
-	if !ok {
-		http.Error(w, "Streaming unsupported", http.StatusInternalServerError)
-		return
-	}
-
-	var lastNotifID int64
-	ticker := time.NewTicker(5 * time.Second)
-	defer ticker.Stop()
-
-	for {
-		select {
-		case <-r.Context().Done():
+		flusher, ok := w.(http.Flusher)
+		if !ok {
+			http.Error(w, "Streaming unsupported", http.StatusInternalServerError)
 			return
-		case <-ticker.C:
-			notifs, err := s.db.GetNotifications(user.ID)
-			if err != nil {
-				continue
-			}
+		}
 
-			var newNotifs []db.Notification
-			var maxID int64
-			for _, n := range notifs {
-				if n.ID > lastNotifID {
-					newNotifs = append(newNotifs, n)
-					if n.ID > maxID {
-						maxID = n.ID
+		// Kirim data awal notifikasi langsung
+		initialNotifs, _ := s.db.GetNotifications(user.ID)
+		var lastNotifID int64
+		for _, n := range initialNotifs {
+			if n.ID > lastNotifID {
+				lastNotifID = n.ID
+			}
+		}
+		if initialNotifs != nil {
+			data, _ := json.Marshal(map[string]interface{}{"notifications": initialNotifs})
+			fmt.Fprintf(w, "data: %s\n\n", data)
+			flusher.Flush()
+		}
+
+		ticker := time.NewTicker(3 * time.Second)
+		defer ticker.Stop()
+
+		for {
+			select {
+			case <-r.Context().Done():
+				return
+			case <-ticker.C:
+				notifs, err := s.db.GetNotifications(user.ID)
+				if err != nil {
+					continue
+				}
+
+				var newNotifs []db.Notification
+				var maxID int64
+				for _, n := range notifs {
+					if n.ID > lastNotifID {
+						newNotifs = append(newNotifs, n)
+						if n.ID > maxID {
+							maxID = n.ID
+						}
 					}
 				}
-			}
 
-			if len(newNotifs) > 0 {
-				if maxID > lastNotifID {
-					lastNotifID = maxID
+				if len(newNotifs) > 0 {
+					if maxID > lastNotifID {
+						lastNotifID = maxID
+					}
+					// Kirim full list notifikasi terbaru agar UI selalu sinkron
+					data, _ := json.Marshal(map[string]interface{}{"notifications": notifs})
+					fmt.Fprintf(w, "data: %s\n\n", data)
+					flusher.Flush()
 				}
-				data, _ := json.Marshal(map[string]interface{}{"notifications": newNotifs})
-				fmt.Fprintf(w, "data: %s\n\n", data)
-				flusher.Flush()
 			}
 		}
 	}
+
+	// Regular GET JSON
+	notifs, err := s.db.GetNotifications(user.ID)
+	if err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		json.NewEncoder(w).Encode(map[string]string{"error": err.Error()})
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(notifs)
 }
 
 func (s *Server) handleNotificationsRead(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
 	if r.Method != http.MethodPost {
-		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		w.WriteHeader(http.StatusMethodNotAllowed)
+		json.NewEncoder(w).Encode(map[string]string{"error": "Method not allowed"})
 		return
 	}
 	user := s.getAuthenticatedUser(r)
 	if user == nil {
-		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		w.WriteHeader(http.StatusUnauthorized)
+		json.NewEncoder(w).Encode(map[string]string{"error": "Unauthorized"})
 		return
 	}
-	if err := s.db.MarkNotificationsRead(user.ID); err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+
+	var req struct {
+		ID  int64 `json:"id"`
+		All bool  `json:"all"`
+	}
+	_ = json.NewDecoder(r.Body).Decode(&req)
+
+	if req.ID > 0 {
+		if err := s.db.MarkNotificationReadByID(req.ID, user.ID); err != nil {
+			w.WriteHeader(http.StatusInternalServerError)
+			json.NewEncoder(w).Encode(map[string]string{"error": err.Error()})
+			return
+		}
+	} else if req.All {
+		if err := s.db.MarkNotificationsRead(user.ID); err != nil {
+			w.WriteHeader(http.StatusInternalServerError)
+			json.NewEncoder(w).Encode(map[string]string{"error": err.Error()})
+			return
+		}
+	} else {
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(map[string]string{"error": "Field 'id' atau 'all': true diperlukan"})
 		return
 	}
-	w.Header().Set("Content-Type", "application/json")
+
 	json.NewEncoder(w).Encode(map[string]string{"status": "marked read"})
 }
 
 func (s *Server) handleShare(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+
 	if r.Method != http.MethodPost {
-		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		w.WriteHeader(http.StatusMethodNotAllowed)
+		json.NewEncoder(w).Encode(map[string]string{"error": "Method not allowed"})
 		return
 	}
 	user := s.getAuthenticatedUser(r)
 	if user == nil {
-		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		w.WriteHeader(http.StatusUnauthorized)
+		json.NewEncoder(w).Encode(map[string]string{"error": "Unauthorized"})
 		return
 	}
 	masterKeyHex := r.Header.Get("X-Master-Key")
 	if masterKeyHex == "" {
-		http.Error(w, "Missing X-Master-Key header", http.StatusBadRequest)
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(map[string]string{"error": "Missing X-Master-Key header"})
 		return
 	}
 	masterKey, err := hex.DecodeString(masterKeyHex)
 	if err != nil || len(masterKey) != 32 {
-		http.Error(w, "Invalid X-Master-Key header", http.StatusBadRequest)
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(map[string]string{"error": "Invalid X-Master-Key header"})
 		return
 	}
 
@@ -1247,28 +1509,43 @@ func (s *Server) handleShare(w http.ResponseWriter, r *http.Request) {
 		RecipientUsername string     `json:"recipient_username"`
 		Scope             string     `json:"scope"`
 		MaxForwardCount   int        `json:"max_forward_count"`
+		ExpiresInSeconds  int64      `json:"expires_in_seconds"`
 		ExpiresAt         *time.Time `json:"expires_at"`
+		OneTimeView       bool       `json:"one_time_view"`
 		ShareID           int64      `json:"share_id"` // if forwarding an existing share
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		http.Error(w, "Invalid JSON", http.StatusBadRequest)
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(map[string]string{"error": "Invalid JSON format"})
 		return
 	}
 	recipient, err := s.db.GetUserByUsername(req.RecipientUsername)
 	if err != nil {
-		http.Error(w, "Recipient not found", http.StatusNotFound)
+		// Fallback jika dikirim berupa user ID
+		if uid, convErr := strconv.ParseInt(req.RecipientUsername, 10, 64); convErr == nil {
+			recipient, err = s.db.GetUserByID(uid)
+		}
+	}
+	if err != nil || recipient == nil {
+		w.WriteHeader(http.StatusNotFound)
+		json.NewEncoder(w).Encode(map[string]string{"error": "Penerima tidak ditemukan: " + req.RecipientUsername})
 		return
 	}
-	
+
 	keyObj, err := s.db.GetKeyByID(req.KeyID)
 	if err != nil {
-		http.Error(w, "Key not found", http.StatusNotFound)
+		w.WriteHeader(http.StatusNotFound)
+		json.NewEncoder(w).Encode(map[string]string{"error": "Key not found in vault"})
 		return
 	}
 
 	maxForwardCount := req.MaxForwardCount
 	scope := req.Scope
 	expiresAt := req.ExpiresAt
+	if req.ExpiresInSeconds > 0 {
+		exp := time.Now().Add(time.Duration(req.ExpiresInSeconds) * time.Second)
+		expiresAt = &exp
+	}
 
 	var rawFileKey []byte
 
@@ -1276,44 +1553,51 @@ func (s *Server) handleShare(w http.ResponseWriter, r *http.Request) {
 	if req.ShareID > 0 {
 		fs, err := s.db.GetFileShare(req.ShareID)
 		if err != nil {
-			http.Error(w, "Original share not found", http.StatusNotFound)
+			w.WriteHeader(http.StatusNotFound)
+			json.NewEncoder(w).Encode(map[string]string{"error": "Original share not found"})
 			return
 		}
 		if fs.RecipientID != user.ID {
-			http.Error(w, "Unauthorized to forward this share", http.StatusForbidden)
+			w.WriteHeader(http.StatusForbidden)
+			json.NewEncoder(w).Encode(map[string]string{"error": "Unauthorized to forward this share"})
 			return
 		}
 		if fs.RevokedAt != nil {
-			http.Error(w, "Share has been revoked", http.StatusForbidden)
+			w.WriteHeader(http.StatusForbidden)
+			json.NewEncoder(w).Encode(map[string]string{"error": "Share has been revoked"})
 			return
 		}
 		if fs.ExpiresAt != nil && fs.ExpiresAt.Before(time.Now()) {
-			http.Error(w, "Share has expired", http.StatusForbidden)
+			w.WriteHeader(http.StatusForbidden)
+			json.NewEncoder(w).Encode(map[string]string{"error": "Share has expired"})
 			return
 		}
 		if fs.CurrentForwardCount >= fs.MaxForwardCount {
-			http.Error(w, "Maximum forward count reached", http.StatusForbidden)
+			w.WriteHeader(http.StatusForbidden)
+			json.NewEncoder(w).Encode(map[string]string{"error": "Maximum forward count reached"})
 			return
 		}
-		
+
 		privEnc, _ := hex.DecodeString(user.PrivateKeyEnc)
 		aesGCM := &crypto.AESGCM{}
 		privPEM, err := aesGCM.Decrypt(privEnc, masterKey)
 		if err != nil {
-			http.Error(w, "Failed to unwrap private key", http.StatusInternalServerError)
+			w.WriteHeader(http.StatusInternalServerError)
+			json.NewEncoder(w).Encode(map[string]string{"error": "Failed to unwrap private key"})
 			return
 		}
-		
+
 		wrappedForMe, _ := hex.DecodeString(fs.WrappedKeyForRecipient)
 		rawFileKey, err = crypto.DecryptRSA(string(privPEM), wrappedForMe)
 		if err != nil {
-			http.Error(w, "Failed to decrypt file key", http.StatusInternalServerError)
+			w.WriteHeader(http.StatusInternalServerError)
+			json.NewEncoder(w).Encode(map[string]string{"error": "Failed to decrypt file key"})
 			return
 		}
-		
+
 		// Increment forward count
 		s.db.IncrementForwardCount(fs.ID)
-		
+
 		// Inherit constraints, reduce max forward
 		maxForwardCount = fs.MaxForwardCount - fs.CurrentForwardCount - 1
 		if maxForwardCount < 0 {
@@ -1323,15 +1607,17 @@ func (s *Server) handleShare(w http.ResponseWriter, r *http.Request) {
 		expiresAt = fs.ExpiresAt
 	} else {
 		if keyObj.UserID != user.ID {
-			http.Error(w, "Unauthorized to share this key", http.StatusForbidden)
+			w.WriteHeader(http.StatusForbidden)
+			json.NewEncoder(w).Encode(map[string]string{"error": "Unauthorized to share this key"})
 			return
 		}
-		
+
 		wrappedFileKey, _ := hex.DecodeString(keyObj.WrappedFileKeyOwner)
 		aesGCM := &crypto.AESGCM{}
 		rawFileKey, err = aesGCM.Decrypt(wrappedFileKey, masterKey)
 		if err != nil {
-			http.Error(w, "Failed to unwrap file key", http.StatusInternalServerError)
+			w.WriteHeader(http.StatusInternalServerError)
+			json.NewEncoder(w).Encode(map[string]string{"error": "Failed to unwrap file key"})
 			return
 		}
 	}
@@ -1345,7 +1631,8 @@ func (s *Server) handleShare(w http.ResponseWriter, r *http.Request) {
 		const letters = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
 		b := make([]byte, 12)
 		if _, err := io.ReadFull(rand.Reader, b); err != nil {
-			http.Error(w, "Failed to generate password", http.StatusInternalServerError)
+			w.WriteHeader(http.StatusInternalServerError)
+			json.NewEncoder(w).Encode(map[string]string{"error": "Failed to generate password"})
 			return
 		}
 		for i := range b {
@@ -1356,7 +1643,8 @@ func (s *Server) handleShare(w http.ResponseWriter, r *http.Request) {
 		// Generate 16-byte salt
 		salt := make([]byte, 16)
 		if _, err := io.ReadFull(rand.Reader, salt); err != nil {
-			http.Error(w, "Failed to generate salt", http.StatusInternalServerError)
+			w.WriteHeader(http.StatusInternalServerError)
+			json.NewEncoder(w).Encode(map[string]string{"error": "Failed to generate salt"})
 			return
 		}
 		passwordSaltHex = hex.EncodeToString(salt)
@@ -1368,32 +1656,37 @@ func (s *Server) handleShare(w http.ResponseWriter, r *http.Request) {
 		aesGCM := &crypto.AESGCM{}
 		wrapped, err := aesGCM.Encrypt(rawFileKey, wrapKey)
 		if err != nil {
-			http.Error(w, "Failed to wrap key with password", http.StatusInternalServerError)
+			w.WriteHeader(http.StatusInternalServerError)
+			json.NewEncoder(w).Encode(map[string]string{"error": "Failed to wrap key with password"})
 			return
 		}
 		wrappedKeyForPasswordHex = hex.EncodeToString(wrapped)
 	} else {
 		wrappedForRecipient, err := crypto.EncryptRSA(recipient.PublicKey, rawFileKey)
 		if err != nil {
-			http.Error(w, "Failed to re-wrap file key for recipient", http.StatusInternalServerError)
+			w.WriteHeader(http.StatusInternalServerError)
+			json.NewEncoder(w).Encode(map[string]string{"error": "Failed to re-wrap file key for recipient"})
 			return
 		}
 		wrappedForRecipientHex = hex.EncodeToString(wrappedForRecipient)
 	}
 
-	if _, err := s.db.CreateFileShare(req.KeyID, user.ID, recipient.ID, maxForwardCount, scope, accessMethod, wrappedForRecipientHex, wrappedKeyForPasswordHex, passwordSaltHex, expiresAt); err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+	if _, err := s.db.CreateFileShare(req.KeyID, user.ID, recipient.ID, maxForwardCount, scope, accessMethod, req.OneTimeView, wrappedForRecipientHex, wrappedKeyForPasswordHex, passwordSaltHex, expiresAt); err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		json.NewEncoder(w).Encode(map[string]string{"error": "Failed to store share: " + err.Error()})
 		return
 	}
 	// NO password in notification message!
 	s.db.CreateNotification(recipient.ID, "file_share", "New File Shared", fmt.Sprintf("%s shared a file with you", user.Username), req.KeyID)
-	
-	s.db.LogAudit(user.ID, "SHARE", "Shared key "+strconv.FormatInt(req.KeyID, 10)+" with "+req.RecipientUsername+" using method "+accessMethod)
+
+	s.db.LogAudit(user.ID, "SHARE", fmt.Sprintf("Shared key %d with %s (method: %s, one_time_view: %v)", req.KeyID, req.RecipientUsername, accessMethod, req.OneTimeView))
 
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]string{
-		"status": "shared",
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"status":         "shared",
 		"share_password": sharePassword,
+		"one_time_view":  req.OneTimeView,
+		"expires_at":     expiresAt,
 	})
 }
 
@@ -1423,4 +1716,3 @@ func (s *Server) handleKDF(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]string{"master_key": hashHex})
 }
-
